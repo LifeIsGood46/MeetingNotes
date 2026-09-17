@@ -18,7 +18,7 @@ from pathlib import Path
 
 from meetingnotes import config
 
-STATE_PATH = config.WORK_DIR.parent / "jobs.json"
+STATE_PATH = config.APP_DIR / "jobs.json"
 MARKER_NAME = ".meetingnotes-output"
 
 
@@ -31,6 +31,7 @@ class Job:
     custom_prompt: str = ""
     status: str = "queued"          # queued | running | done | failed
     stage: str = "queued"
+    fraction: float | None = None   # 0..1 overall progress (None = unknown)
     progress_log: list[str] = field(default_factory=list)
     outputs: dict[str, str] = field(default_factory=dict)
     out_dir: str = ""               # where final artifacts were saved on disk
@@ -89,10 +90,12 @@ class JobQueue:
         with self._lock:
             return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
 
-    def log(self, job: Job, msg: str) -> None:
+    def log(self, job: Job, msg: str, fraction: float | None = None) -> None:
         with self._lock:
             job.progress_log.append(msg)
             job.stage = msg
+            if fraction is not None:
+                job.fraction = min(1.0, max(0.0, fraction))
 
     def set_status(self, job: Job, status: str, error: str = "") -> None:
         with self._lock:
@@ -107,6 +110,24 @@ class JobQueue:
         with self._lock:
             self._jobs.pop(job_id, None)
             self._save()
+
+    def retry(self, job_id: str):
+        """Reset a failed job to staged so it can start again.
+
+        Profile/task/prompt are kept; error, stage and stale outputs are
+        cleared. Returns the job, or None when it isn't failed.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.status != "failed":
+                return None
+            job.status = "staged"
+            job.stage = ""
+            job.error = ""
+            job.outputs = {}
+            job.out_dir = ""
+            self._save()
+            return job
 
     # ---------------- clearing ----------------
 

@@ -1,4 +1,4 @@
-# Private meeting recordings / transcripts / generated docs вЂ” never publish
+# Private meeting recordings / transcripts / generated docs - never publish
 data/
 archive/
 work/
@@ -9,9 +9,14 @@ examples/*.mp3
 
 # Build artifacts
 build/
-meetingnotes.exe
-meetingnotes-cli.exe
+dist/
 *.spec
+/*.exe
+
+# Runtime dirs (dev) 
+work/
+out/
+.local/
 .pytest_cache/
 .playwright-mcp/
 

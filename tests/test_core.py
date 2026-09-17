@@ -150,6 +150,32 @@ def test_update_does_not_overwrite_key_with_mask(tmp_settings):
     assert reloaded.llm.openai_api_key == "sk-openai-secret"
     assert reloaded.language == "en"
 
+
+@pytest.fixture
+def legacy_state(tmp_path, monkeypatch):
+    """Pre-onboarding settings file (no `onboarded` key), like migrated ones."""
+    monkeypatch.setattr(settings_mod, "SETTINGS_PATH", tmp_path / "settings.json")
+    monkeypatch.setattr(settings_mod, "APP_DIR", tmp_path)
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"model_size": "large-v3"}), encoding="utf-8")
+    return tmp_path
+
+
+def test_legacy_settings_without_jobs_still_onboard(legacy_state):
+    (legacy_state / "jobs.json").write_text(
+        json.dumps({"jobs": []}), encoding="utf-8")
+    assert load_settings().onboarded is False
+
+
+def test_legacy_settings_with_jobs_skip_onboarding(legacy_state):
+    (legacy_state / "jobs.json").write_text(
+        json.dumps({"jobs": [{"id": "abc", "status": "done"}]}), encoding="utf-8")
+    assert load_settings().onboarded is True
+
+
+def test_legacy_settings_missing_jobs_file_stays_fresh(legacy_state):
+    assert load_settings().onboarded is False
+
 # ---------------- ETA progress ----------------
 
 def test_fmt_eta_units():

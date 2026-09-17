@@ -252,6 +252,47 @@ def download_model(
     return dl
 
 
+def ensure_downloaded(size: str, progress_cb: Callable[..., None] | None = None) -> None:
+    """Block until the model snapshot exists locally, with progress messages.
+
+    Used by the pipeline so a first-ever run downloads visibly (with % updates
+    and an ETA line) instead of faster-whisper doing it silently inside the
+    "Transcribing" stage. Raises RuntimeError with a clear message on failure.
+    """
+    if is_model_downloaded(size):
+        return
+    import time
+
+    log = progress_cb or (lambda _msg, _frac=None: None)
+    approx_mb = {"tiny": 75, "base": 145, "small": 465, "medium": 1500,
+                 "large-v1": 2900, "large-v2": 2900, "large-v3": 2900}.get(size, 0)
+    log(f"Model {size} not cached — downloading (~{approx_mb} MB, first run only)...", 0.0)
+    dl = download_model(size)
+    last_line, last_emit, t0 = "", 0.0, time.time()
+    while dl.status == "downloading":
+        dl._thread.join(timeout=2.0)  # noqa: SLF001
+        if time.time() - last_emit > 15 and dl.total_bytes > 0:
+            frac = dl.downloaded_bytes / dl.total_bytes
+            pct = 100 * frac
+            elapsed = time.time() - t0
+            eta = f", ETA ~{_fmt_seconds(elapsed / max(dl.downloaded_bytes, 1) * (dl.total_bytes - dl.downloaded_bytes))}" if dl.downloaded_bytes > 0 else ""
+            last_line = f"      downloading {size}: {pct:.0f}% ({dl.downloaded_bytes / 10**6:.1f}/{dl.total_bytes // 10**6} MB{eta})"
+            log(last_line, frac)
+            last_emit = time.time()
+    if dl.status != "done" or not is_model_downloaded(size):
+        raise RuntimeError(f"Model download failed: {dl.error or 'unknown error'}. Check connection and retry.")
+    log(f"Model {size} ready.", 1.0)
+
+
+def _fmt_seconds(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m{seconds % 60:02d}s"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
 def _loaded_flag(size: str) -> bool:
     try:
         from . import transcribe as _transcribe

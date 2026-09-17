@@ -73,7 +73,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_dir = Path(args.out_dir or _resolve_out(settings))
     work_dir = Path(args.work_dir or config.WORK_DIR) / source.stem
 
-    def progress(msg: str) -> None:
+    def progress(msg: str, fraction: float | None = None) -> None:
         if args.json:
             return  # keep stdout machine-pure; progress goes nowhere (stderr would interleave)
         _print(msg)

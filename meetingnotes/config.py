@@ -2,21 +2,28 @@
 
 Keeps all path juggling and CUDA DLL bootstrapping in one place so the rest
 of the codebase never has to think about it.
+
+Portable mode: when running from a packaged exe, EVERYTHING the app writes
+(settings, jobs, whisper models, uploads, results) lives inside the exe's
+own folder. Deleting the folder removes the app and all its data — no junk
+scattered across the user profile.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
 
 def _load_dotenv() -> None:
-    """Load KEY=VALUE lines from .env in the project root (if present).
+    """Load KEY=VALUE lines from .env next to the app (if present).
 
     Only sets variables not already defined in the environment.
     """
-    env_path = Path(__file__).resolve().parent.parent / ".env"
+    env_path = Path(sys.executable).resolve().parent / ".env" if getattr(sys, "frozen", False) \
+        else Path(__file__).resolve().parent.parent / ".env"
     if not env_path.is_file():
         return
     for line in env_path.read_text(encoding="utf-8").splitlines():
@@ -39,15 +46,74 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_DIR.parent
 PROFILES_DIR = PACKAGE_DIR / "profiles"
 
-# Frozen (PyInstaller) apps extract to a temp dir that is DELETED on exit,
-# so outputs must live in a stable user dir. Final artifacts go straight to
-# the user's Downloads folder; intermediate files stay under ~/.meetingnotes.
+
+def _app_root() -> Path:
+    """The app's own folder.
+
+    Frozen exe: the folder containing the exe (portable root — everything
+    the app writes lives here). Dev checkout: the project root.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return PROJECT_ROOT
+
+
+def _ensure_portable_layout() -> None:
+    """Create the portable data layout next to the exe on first run."""
+    if getattr(sys, "frozen", False):
+        root = _app_root()
+        for sub in ("data", "models", "results"):
+            (root / sub).mkdir(parents=True, exist_ok=True)
+
+
+_ensure_portable_layout()
+
+
+def _migrate_legacy_home() -> None:
+    """One-time move of pre-portable state into the portable data dir.
+
+    Builds before full portable mode kept settings/jobs/uploads in
+    ``~/.meetingnotes``. On first run of a portable build, copy that state
+    beside the exe so keys and job history survive the upgrade. Best-effort:
+    never overwrites, never blocks boot.
+    """
+    legacy = Path.home() / ".meetingnotes"
+    if not legacy.is_dir():
+        return
+    try:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+        if any(APP_DIR.iterdir()):
+            return  # already has state — don't merge, don't overwrite
+        for item in legacy.iterdir():
+            dest = APP_DIR / item.name
+            if dest.exists():
+                continue
+            if item.is_dir():
+                shutil.copytree(item, dest, ignore_dangling_symlinks=True)
+            else:
+                shutil.copy2(item, dest)
+    except Exception:
+        pass
+
+
 if getattr(sys, "frozen", False):
-    _base = Path.home() / ".meetingnotes"
-    _downloads = Path.home() / "Downloads" / "meetingnotes"
-    WORK_DIR = Path(os.environ.get("MEETING_NOTES_WORK_DIR", _base / "work"))
-    OUT_DIR = Path(os.environ.get("MEETING_NOTES_OUT_DIR", _downloads))
+    # ---- portable layout: everything beside the exe ----
+    _root = _app_root()
+    APP_DIR = _root / "data"       # settings.json, jobs.json, uploads
+    MODELS_DIR = _root / "models"  # whisper downloads
+    WORK_DIR = Path(os.environ.get("MEETING_NOTES_WORK_DIR", APP_DIR / "work"))
+    OUT_DIR = Path(os.environ.get("MEETING_NOTES_OUT_DIR", _root / "results"))
+
+    # HuggingFace hub cache must land in MODELS_DIR, not ~/.cache/huggingface.
+    # Set before anything imports huggingface_hub.
+    os.environ.setdefault("HF_HOME", str(MODELS_DIR / "hf"))
+    os.environ.setdefault("HF_HUB_CACHE", str(MODELS_DIR / "hf" / "hub"))
+
+    _migrate_legacy_home()
 else:
+    # ---- dev mode: keep project-local dirs (gitignored) ----
+    APP_DIR = PROJECT_ROOT / ".local"
+    MODELS_DIR = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
     WORK_DIR = Path(os.environ.get("MEETING_NOTES_WORK_DIR", PROJECT_ROOT / "work"))
     OUT_DIR = Path(os.environ.get("MEETING_NOTES_OUT_DIR", PROJECT_ROOT / "out"))
 
@@ -64,33 +130,33 @@ DEFAULT_LANGUAGE = os.environ.get("MEETING_NOTES_LANGUAGE", "ru")
 # CUDA DLL bootstrapping (Windows + faster-whisper)
 #
 # faster-whisper via CTranslate2 needs cuBLAS / CUDA runtime DLLs visible.
-# On Windows with Python 3.13+ they aren't on PATH by default. This scans the
-# installed nvidia pip packages and adds their bin dirs.
+# On Windows they aren't on PATH by default. This scans the bundled nvidia
+# packages (frozen exe) or the installed pip packages (dev) and registers
+# their bin dirs.
 # ---------------------------------------------------------------------------
 
 
 def setup_cuda_dlls() -> None:
-    """Add nvidia pip package DLL dirs to the DLL search path (no-op elsewhere)."""
+    """Add nvidia DLL dirs to the DLL search path (no-op elsewhere)."""
     if not sys.platform.startswith("win"):
         return
 
     candidates: list[Path] = []
-    # 1. PyInstaller bundle (sys._MEIPASS)
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        meipass = Path(sys._MEIPASS)
-        for nvidia_root in [meipass / "nvidia", meipass / "_internal" / "nvidia"]:
+    # 1. PyInstaller bundle (onedir: _internal sits next to the exe)
+    if getattr(sys, "frozen", False):
+        for base in (_app_root(), _app_root() / "_internal"):
+            nvidia_root = base / "nvidia"
             if nvidia_root.is_dir():
                 for pkg in nvidia_root.iterdir():
                     bin_dir = pkg / "bin"
                     if bin_dir.is_dir():
                         candidates.append(bin_dir)
-        # Also check for ctranslate2 bundled libs
-        for p in [meipass, meipass / "_internal"]:
-            if (p / "cublas64_12.dll").exists():
-                candidates.append(p)
-            ct2 = p / "ctranslate2"
-            if ct2.is_dir():
-                candidates.append(ct2)
+        internal = _app_root() / "_internal"
+        if (internal / "cublas64_12.dll").exists():
+            candidates.append(internal)
+        ct2 = internal / "ctranslate2"
+        if ct2.is_dir():
+            candidates.append(ct2)
     # 2. Regular site-packages
     for site in _site_packages():
         nvidia = site / "nvidia"

@@ -143,7 +143,7 @@ def transcribe(
     compute_type: str | None = None,
     language: str | None = None,
     time_offset: float = 0.0,
-    progress_cb: Callable[[str], None] | None = None,
+    progress_cb: Callable[..., None] | None = None,
     progress_meta: dict | None = None,
 ) -> TranscriptionResult:
     """Transcribe an audio file with the given profile.
@@ -157,7 +157,7 @@ def transcribe(
     compute_type = compute_type or config.DEFAULT_COMPUTE_TYPE
     language = language or profile.language or config.DEFAULT_LANGUAGE
 
-    log = progress_cb or (lambda _msg: None)
+    log = progress_cb or (lambda _msg, _frac=None: None)
 
     def _do_transcribe(dev: str, comp: str):
         model = _get_model(model_size, dev, comp)
@@ -190,7 +190,9 @@ def transcribe(
                 )
             )
             if time.time() - last_log > 20:
-                log(f"  ... {len(result.segments)} segments, {_progress_line(seg.end + time_offset, progress_meta)}")
+                pos = seg.end + time_offset
+                log(f"  ... {len(result.segments)} segments, {_progress_line(pos, progress_meta)}",
+                    _audio_fraction(pos, progress_meta))
                 last_log = time.time()
         result.duration_s = getattr(info, "duration", 0.0) or 0.0
         result.elapsed_s = time.time() - start
@@ -198,6 +200,16 @@ def transcribe(
         return result
 
     return _do_transcribe(device, compute_type)
+
+
+def _audio_fraction(audio_pos: float, meta: dict | None) -> float | None:
+    """Share of the whole job's audio transcribed so far (0..1), if knowable."""
+    total = (meta or {}).get("audio_total") or 0.0
+    if total <= 0:
+        return None
+    base = meta.get("audio_done", 0.0) if meta else 0.0
+    done = base + max(0.0, audio_pos - base)
+    return min(0.999, max(0.0, done / total))
 
 
 def _progress_line(audio_pos: float, meta: dict | None) -> str:

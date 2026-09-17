@@ -1,117 +1,75 @@
-<div align="center">
+# MeetingNotes
 
-# meetingnotes
+<img src="assets/logo.png" width="120" alt="MeetingNotes logo" />
 
-**Meeting recordings → transcripts → structured documents. Local. Fast. Zero-config for raw transcripts.**
+Meeting recordings into transcripts and structured documents — notes, action items, test plans. Runs fully on your machine: drop a file in, press Start, open the results folder. First launch walks you through setup with a short guide (reopen it any time from Settings → Replay introduction); Settings lives behind the gear icon in the side rail.
 
-Drop a recording, get a timestamped transcript — optionally cleaned and reshaped
-by an LLM into notes, action items, or a test plan.
+![queue](screenshots/queue.png)
 
-[![tests](https://img.shields.io/badge/tests-83%20passing-brightgreen)](#development)
-[![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#run)
+## Download and run
 
-</div>
+No installer, no admin rights, no accounts.
 
----
+1. Download `MeetingNotes-<version>-win64.zip` from [Releases](../../releases)
+2. Unzip anywhere — USB stick included
+3. Double-click `meetingnotes.exe` — it opens its own window, no browser needed
 
-![settings](screenshots/settings.png)
+Everything the app writes (settings, whisper models, transcripts) lives inside
+its own folder. Delete the folder and it's gone completely. First run downloads
+the transcription model of your choice (75 MB – 3 GB) with a live progress bar.
 
-## Why
+Running from source instead:
 
-Raw Whisper output on noisy, mixed-language technical meetings is borderline
-unusable — misheard domain terms, drift, no punctuation discipline. meetingnotes
-closes the gap with domain glossaries, audio preprocessing, and a two-phase
-LLM cleanup stage. Everything runs locally through a web UI, a headless CLI
-for agents, or both.
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+python launcher.py
+```
 
 ## How it works
 
 | Stage | What happens |
 |-------|--------------|
-| **Extract** | ffmpeg pulls audio (+ loudness normalization, highpass) from any format |
-| **Transcribe** | faster-whisper (CUDA/CPU), domain vocabulary prompt, VAD, no drift |
-| **Correct** | per-profile glossary fixes Whisper-mangled terms (`скандала` → SCADA) |
-| **Polish (optional)** | LLM cleanup, then notes / actions / test plan / summary / your own prompt |
+| Extract | ffmpeg pulls and normalizes audio from any video/audio format |
+| Transcribe | faster-whisper on your GPU, with a domain vocabulary prompt |
+| Correct | per-domain glossaries fix Whisper's mangled terms (`скандала` → SCADA) |
+| Polish (optional) | an LLM cleans the text, then writes notes, actions, a test plan or a summary |
 
-## Highlights
+Transcription needs nothing but the app. The optional polish step works with a
+local model (Ollama, LM Studio, any OpenAI-compatible server) or a cloud key
+(Ollama Cloud, OpenRouter, Anthropic, OpenAI) — or with nothing at all, if you
+only need raw transcripts.
 
-- **Zero-config raw transcripts** — no API keys, no LLM needed
-- **Bring your own LLM**: Ollama (local/cloud), LM Studio & any OpenAI-compatible
-  server, OpenRouter, Anthropic, OpenAI
-- **14 domain profiles in 6 languages** (RU/EN/ES/DE/FR/PT), auto-picked by audio language
-- **Per-job control** in the UI: staged cards with per-job profile/output/prompt
-- **Model manager**: download with live progress, preload, unload (free VRAM), delete
-- **Results on disk**: `Downloads\meetingnotes\<filename>\`, one click to Explorer
-- **Agent-ready CLI** with `--json` output and stable exit codes — see [AGENTS.md](AGENTS.md)
-- **Measurable quality**: built-in Word Error Rate evaluation
-- Jobs persist across restarts; safe per-job cleanup (marker-guarded deletion)
+## Dictionaries
 
-## Run
+14 domain profiles (software, business, medical, legal, finance, education,
+science, marketing, support, HR, dashboards, SCADA, MES, generic) across 6
+languages (RU/EN/ES/DE/FR/PT), picked automatically from the audio language.
+Each profile pairs an upfront vocabulary prompt with a post-pass correction
+map; corrections hold only verified normalizations and real observed
+mishearings — never invented ones (enforced by `tests/test_profiles.py`).
 
-**GUI:** double-click `meetingnotes.exe` (build once with `build.bat`) — the UI
-opens in your browser, everything from drag & drop to results happens there.
+## For agents and pipelines
 
-**CLI (agents / pipelines):**
+`meetingnotes-cli.exe` in the same folder does everything headless, with
+`--json` output and stable exit codes:
 
 ```powershell
 meetingnotes-cli run meeting.mp4 --task raw --json
 ```
 
-```json
-{
-  "source": "meeting.mp4",
-  "task": "raw",
-  "outputs": {
-    "transcript_raw": "C:\\...\\meeting.raw.txt",
-    "transcript_corrected": "C:\\...\\meeting.txt",
-    "segments_json": "C:\\...\\meeting.json"
-  }
-}
-```
+Full contract, recipes and exit codes: [AGENTS.md](AGENTS.md).
 
-Formatted output needs an LLM — Ollama local works great:
+![settings](screenshots/settings.png)
+
+## Development
 
 ```powershell
-meetingnotes-cli run meeting.mp4 --profile scada --task testplan --llm ollama --llm-model gemma4:31b
+.venv\Scripts\python.exe -m pytest tests/   # 92 tests, seconds, no GPU needed
+python -m meetingnotes.eval reference.txt hypothesis.txt   # Word Error Rate
 ```
 
-Full command reference, exit codes, and automation recipes: **[AGENTS.md](AGENTS.md)**.
-
-## Dev setup
-
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-python launcher.py          # GUI
-python -m meetingnotes.cli run meeting.mp4   # CLI
-```
-
-Build both exes: `build.bat` (PyInstaller, ~700 MB each — CUDA libraries bundled).
-
-## Quality measurement
-
-Built-in Word Error Rate evaluation with zero dependencies — hand-check a short
-excerpt and measure before/after:
-
-```powershell
-python -m meetingnotes.eval reference.txt hypothesis.txt
-```
-
-## Tests
-
-```powershell
-.venv\Scripts\python.exe -m pytest tests/
-```
-
-83 tests, seconds to run — no GPU, no network, external services mocked.
-
-## Roadmap
-
-- [ ] Speaker diarization
-- [ ] Before/after WER report in the UI
-- [ ] Queue-side batch export
+`build.bat` rebuilds both exes (PyInstaller onedir). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

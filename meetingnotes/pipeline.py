@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .audio import extract_audio, chunk_audio, probe_duration
+from . import config
 from .profiles import Profile, load_profile
 from .transcribe import transcribe, TranscriptionResult
 from .correct import apply_corrections, correct_segments
@@ -46,9 +47,9 @@ class PipelineResult:
     elapsed_s: float = 0.0
 
 
-def _log(cb: Callable[[str], None] | None, msg: str) -> None:
+def _log(cb: Callable[..., None] | None, msg: str, fraction: float | None = None) -> None:
     if cb:
-        cb(msg)
+        cb(msg, fraction)
 
 
 def _resolve_llm(opts: PipelineOptions) -> LLMProvider:
@@ -92,12 +93,16 @@ def run_pipeline(
     work_dir: Path,
     out_dir: Path,
     opts: PipelineOptions,
-    progress_cb: Callable[[str], None] | None = None,
+    progress_cb: Callable[..., None] | None = None,
 ) -> PipelineResult:
     """Run the full processing pipeline for one source file.
 
     Stages run conditionally based on ``opts.task``: ``raw`` stops after
     glossary correction; anything beyond that requires an LLM provider.
+
+    Overall progress fractions (for determinate progress bars):
+    extract 0–0.05, model download 0.05–0.15, transcribe 0.15–0.85,
+    correct 0.87, LLM 0.90, done 1.0.
     """
     t0 = time.time()
     source = Path(source)
@@ -109,15 +114,27 @@ def run_pipeline(
 
     # --- Stage 1: audio extraction / preprocessing -------------------------
     wav_path = work_dir / f"{source.stem}.wav"
-    _log(progress_cb, f"[1/4] Extracting + normalizing audio -> {wav_path.name}")
+    _log(progress_cb, f"[1/4] Extracting + normalizing audio -> {wav_path.name}", 0.01)
     prep = extract_audio(source, wav_path, normalize=opts.normalize_audio)
-    _log(progress_cb, f"      duration: {prep.duration_s:.0f}s")
+    _log(progress_cb, f"      duration: {prep.duration_s:.0f}s", 0.03)
+
+    # --- Ensure the model exists BEFORE transcribing, so a first-ever run
+    # downloads visibly (with %) instead of stalling silently inside faster-whisper.
+    from .models import ensure_downloaded, KNOWN_MODELS
+
+    model_size = opts.model_size or config.DEFAULT_MODEL_SIZE
+    if model_size in KNOWN_MODELS:
+        ensure_downloaded(model_size, lambda msg, frac=None: _log(
+            progress_cb, msg, None if frac is None else 0.05 + 0.10 * frac))
 
     # --- Stage 2: transcription (chunked if long) --------------------------
-    _log(progress_cb, "[2/4] Transcribing")
+    _log(progress_cb, "[2/4] Transcribing", 0.15)
     chunks = chunk_audio(wav_path, work_dir / "chunks", chunk_length_s=opts.chunk_length_s)
     if len(chunks) > 1:
-        _log(progress_cb, f"      long audio: {len(chunks)} chunks")
+        _log(progress_cb, f"      long audio: {len(chunks)} chunks", 0.15)
+
+    def _transcribe_progress(msg: str, frac: float | None = None) -> None:
+        _log(progress_cb, msg, None if frac is None else 0.15 + 0.70 * frac)
 
     all_segments: list[dict] = []
     audio_total = sum(probe_duration(c) for c in chunks)
@@ -133,7 +150,7 @@ def run_pipeline(
             compute_type=opts.compute_type,
             language=opts.language,
             time_offset=offset,
-            progress_cb=progress_cb,
+            progress_cb=_transcribe_progress,
             progress_meta={
                 "chunk": i + 1,
                 "chunks": len(chunks),
@@ -146,7 +163,7 @@ def run_pipeline(
         all_segments.extend(res.as_dicts())
 
     # --- Stage 3: glossary correction --------------------------------------
-    _log(progress_cb, "[3/4] Applying glossary corrections")
+    _log(progress_cb, "[3/4] Applying glossary corrections", 0.87)
     corrected_segments = correct_segments(all_segments, profile.corrections)
     transcript_raw = "\n\n".join(s["text"] for s in all_segments)
     transcript_corrected = "\n\n".join(s["text"] for s in corrected_segments)
@@ -165,7 +182,7 @@ def run_pipeline(
     needs_llm = opts.task not in ("raw",)
     if needs_llm:
         llm: LLMProvider = _resolve_llm(opts)
-        _log(progress_cb, f"[4/4] LLM stage: provider={llm.provider_name} model={llm.model} task={opts.task}")
+        _log(progress_cb, f"[4/4] LLM stage: provider={llm.provider_name} model={llm.model} task={opts.task}", 0.90)
         cleaned = polish.clean_transcript(transcript_corrected, llm)
         if opts.task == "clean":
             document = cleaned
@@ -176,7 +193,7 @@ def run_pipeline(
         else:
             document = polish.generate_document(cleaned, opts.task, llm)
     else:
-        _log(progress_cb, "[4/4] LLM stage skipped (task=raw)")
+        _log(progress_cb, "[4/4] LLM stage skipped (task=raw)", 0.90)
 
     result.document = document
 
@@ -200,5 +217,5 @@ def run_pipeline(
 
     result.outputs = outputs
     result.elapsed_s = time.time() - t0
-    _log(progress_cb, f"Done in {result.elapsed_s:.0f}s.")
+    _log(progress_cb, f"Done in {result.elapsed_s:.0f}s.", 1.0)
     return result

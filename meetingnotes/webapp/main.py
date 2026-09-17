@@ -84,11 +84,44 @@ def _resolve_out_dir(settings) -> Path:
     return Path(custom) if custom else config.OUT_DIR
 
 
+def _unique_job_dir(out_root: Path, filename: str) -> Path:
+    """Per-job output folder: <root>/<name>/, never reusing an existing one.
+
+    The name is the file stem (no extension — a folder called `x.mp4`
+    reads as a file). On collision a ` (2)`, ` (3)`, … suffix is added,
+    whether the existing folder holds a previous job's artifacts or the
+    user's own files — nothing is ever mixed or overwritten.
+    """
+    stem = Path(filename).stem.strip() or "job"
+    candidate = out_root / stem
+    n = 1
+    while candidate.exists():
+        n += 1
+        candidate = out_root / f"{stem} ({n})"
+    return candidate
+
+
 def _resolve_key(value: str | None, saved: str) -> str:
     """Form value wins; masked placeholder falls back to the saved key."""
     if value and not value.startswith("********"):
         return value.strip()
     return saved or ""
+
+
+def _resolve_task(task: str, prompt: str) -> tuple[str, str]:
+    """Decide the effective LLM task for a job about to run.
+
+    An untouched preset prompt keeps its task (notes/actions/testplan/…);
+    only a user-edited prompt coerces to "custom". Empty prompt on
+    "custom" falls back to plain cleanup.
+    """
+    prompt = (prompt or "").strip()
+    if task == "custom" and not prompt:
+        return "clean", prompt
+    if task not in ("raw", "clean", "custom") and prompt:
+        if prompt != task_default_prompts().get(task, ""):
+            return "custom", prompt
+    return task, prompt
 
 
 def _open_in_explorer(path: Path, select_file: str = "") -> None:
@@ -136,19 +169,15 @@ def _run_job(job: Job, source: Path) -> None:
     job_queue.set_status(job, "running")
     _publish("job", {"id": job.id, "status": "running"})
 
-    def progress(msg: str) -> None:
-        job_queue.log(job, msg)
-        _publish("job", {"id": job.id, "status": job.status, "stage": msg})
+    def progress(msg: str, fraction: float | None = None) -> None:
+        job_queue.log(job, msg, fraction=fraction)
+        _publish("job", {"id": job.id, "status": job.status, "stage": msg,
+                         "fraction": fraction})
 
     try:
         settings = load_settings()
-        task, prompt = job.task, job.custom_prompt.strip()
-        # A user-supplied prompt governs the LLM doc stage; preset-prefilled
-        # text counts too. Empty custom prompt on "custom" = plain cleanup.
-        if task not in ("raw", "clean") and prompt:
-            task = "custom"
-        elif task == "custom" and not prompt:
-            task = "clean"
+        task, prompt = _resolve_task(job.task, job.custom_prompt.strip())
+        job_dir: Path | None = None
 
         # Fail fast on bad LLM credentials before transcription burns minutes.
         if task != "raw":
@@ -170,18 +199,25 @@ def _run_job(job: Job, source: Path) -> None:
             model_size=settings.model_size, device=settings.device,
             compute_type=settings.compute_type, language=settings.language,
         )
+        job_dir = _unique_job_dir(out_root, job.filename)
         result = run_pipeline(
-            source, config.WORK_DIR / job.id, out_root / job.filename,
+            source, config.WORK_DIR / job.id, job_dir,
             opts, progress_cb=progress,
         )
-        mark_output_dir(out_root / job.filename)
+        mark_output_dir(job_dir)
         job.outputs = {name: str(p) for name, p in result.outputs.items()}
-        job.out_dir = str(out_root / job.filename)
+        job.out_dir = str(job_dir)
         job_queue.set_status(job, "done")
         job_queue.persist()
         _publish("job", {"id": job.id, "status": "done",
                          "outputs": job.outputs, "out_dir": job.out_dir})
     except Exception as e:
+        # Don't litter the save folder with empty dirs from failed runs.
+        try:
+            if job_dir is not None and job_dir.is_dir() and not any(job_dir.iterdir()):
+                job_dir.rmdir()
+        except OSError:
+            pass
         job_queue.set_status(job, "failed", error=str(e))
         job_queue.log(job, "Failed.")
         job_queue.persist()
@@ -198,14 +234,26 @@ def _llm_models_response(provider: str, host: str | None, key: str | None) -> di
     provider = (provider or settings.llm.provider or "none").lower()
     if provider in ("none", "no_llm", "off"):
         return {"models": []}
-    if provider == "openai":
-        return {"models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1", "o1-mini"]}
-    if provider == "anthropic":
-        return {"models": ["claude-sonnet-4-5", "claude-3-5-sonnet", "claude-3-haiku"]}
 
     from meetingnotes.llm import get_provider
 
     try:
+        if provider == "openai":
+            api_key = _resolve_key(key, settings.llm.openai_api_key)
+            if not api_key:
+                return {"models": [],
+                        "error": "Paste an OpenAI API key first, then refresh."}
+            p = get_provider("openai", model=settings.llm.model or "",
+                             api_key=api_key)
+            return {"models": p.list_models()}
+        if provider == "anthropic":
+            api_key = _resolve_key(key, settings.llm.anthropic_api_key)
+            if not api_key:
+                return {"models": [],
+                        "error": "Paste an Anthropic API key first, then refresh."}
+            p = get_provider("anthropic", model=settings.llm.model or "",
+                             api_key=api_key)
+            return {"models": p.list_models()}
         if provider == "compat":
             p = get_provider("compat", model=settings.llm.model or "",
                              base_url=(host or "").strip() or settings.llm.compat_base_url,
@@ -217,9 +265,14 @@ def _llm_models_response(provider: str, host: str | None, key: str | None) -> di
             if p.api_key:
                 _verify_with_fallback(p, "gemma4:31b")
         elif provider == "openrouter":
+            # /models is public: list first so users can browse before pasting
+            # a key; verify only when a key is present.
+            api_key = _resolve_key(key, settings.llm.openrouter_api_key) or None
             p = get_provider("openrouter", model=settings.llm.model or "google/gemma-4-31b-it:free",
-                             api_key=_resolve_key(key, settings.llm.openrouter_api_key) or None)
-            _verify_with_fallback(p, "google/gemma-4-31b-it:free")
+                             api_key=api_key)
+            if api_key:
+                _verify_with_fallback(p, "google/gemma-4-31b-it:free")
+            return {"models": p.list_models()}
         else:
             return {"models": []}
         return {"models": p.list_models()}
@@ -344,6 +397,34 @@ def create_app() -> FastAPI:
         _open_in_explorer(folder)
         return {"ok": True, "folder": str(folder)}
 
+    @app.post("/api/settings/browse-folder")
+    def browse_folder(payload: dict):
+        """Open a native folder picker (server runs locally, so the dialog
+        is the real Explorer one) and return the chosen path, if any."""
+        current = (payload.get("current") or "").strip()
+        start = Path(current) if current and Path(current).is_dir() else Path.home()
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+        except ImportError:
+            raise HTTPException(501, "folder picker unavailable in this build — type the path")
+        root = tk.Tk()
+        try:
+            root.withdraw()
+            root.attributes("-topmost", True)
+            chosen = filedialog.askdirectory(initialdir=str(start),
+                                            title="Choose save folder")
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        if not chosen:
+            return {"path": None}  # user cancelled
+        if not Path(chosen).is_dir():
+            raise HTTPException(400, "chosen path is not a folder")
+        return {"path": chosen}
+
     # --------------------------- LLM models --------------------------------
 
     @app.get("/api/llm/models")
@@ -351,7 +432,7 @@ def create_app() -> FastAPI:
         """Model list for the given (or saved) provider; 60s cache, never blocks the UI."""
         settings = load_settings()
         provider = (provider or settings.llm.provider or "none").lower()
-        if provider in ("none", "openai", "anthropic"):  # static or empty lists
+        if provider in ("none",):  # static or empty lists
             return _llm_models_response(provider, host, key)
         cache_key = (provider, host or "", (key or "")[-8:], settings.llm.model or "")
         cached = _llm_models_cache.get(cache_key)
@@ -397,6 +478,7 @@ def create_app() -> FastAPI:
         return {"jobs": [
             {"id": j.id, "filename": j.filename, "profile": j.profile, "task": j.task,
              "custom_prompt": j.custom_prompt, "status": j.status, "stage": j.stage,
+             "fraction": j.fraction,
              "error": j.error, "outputs": list(j.outputs.keys()), "out_dir": j.out_dir,
              "created_at": j.created_at}
             for j in job_queue.list()
@@ -406,7 +488,7 @@ def create_app() -> FastAPI:
     def job_detail(job_id: str):
         j = _job_or_404(job_id)
         return {"id": j.id, "filename": j.filename, "profile": j.profile, "task": j.task,
-                "status": j.status, "stage": j.stage, "error": j.error,
+                "status": j.status, "stage": j.stage, "fraction": j.fraction, "error": j.error,
                 "log": j.progress_log, "outputs": list(j.outputs.keys()),
                 "out_dir": j.out_dir}
 
@@ -454,6 +536,15 @@ def create_app() -> FastAPI:
         job_queue.remove(job.id)
         _publish("job", {"id": job.id, "status": "deleted"})
         return {"ok": True, "removed_dir": removed}
+
+    @app.post("/api/jobs/{job_id}/retry")
+    def retry_job(job_id: str):
+        """Restart a failed job: back to staged, profile/task/prompt kept."""
+        job = _job_or_404(job_id)
+        if not job_queue.retry(job.id):
+            raise HTTPException(400, f"only failed jobs can restart (job is {job.status})")
+        _publish("job", {"id": job.id, "status": "staged"})
+        return {"ok": True}
 
     @app.get("/api/jobs/{job_id}/download/{name}")
     def download(job_id: str, name: str):

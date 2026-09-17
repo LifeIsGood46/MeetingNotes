@@ -4,15 +4,60 @@
   const $ = (sel) => document.querySelector(sel);
   const jobs = new Map(); // id -> job DOM element
 
-  // ---------------- navigation ----------------
-  document.querySelectorAll(".nav-btn").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll(".nav-btn").forEach((x) => x.classList.remove("active"));
-      document.querySelectorAll(".view").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      document.getElementById(`view-${b.dataset.view}`).classList.add("active");
-    });
+  // ---------------- settings dialog ----------------
+  function openSettings() { $("#settings-overlay").hidden = false; }
+  function closeSettings() { $("#settings-overlay").hidden = true; }
+  $("#settings-btn").addEventListener("click", openSettings);
+  $("#settings-close-btn").addEventListener("click", closeSettings);
+  $("#settings-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "settings-overlay") closeSettings();
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#settings-overlay").hidden) closeSettings();
+  });
+
+  // ---------------- first-launch onboarding ----------------
+  const onboardSlides = () => [...document.querySelectorAll(".onboard-slide")];
+  let onboardIdx = 0;
+  function showOnboard(idx) {
+    const slides = onboardSlides();
+    onboardIdx = Math.max(0, Math.min(idx, slides.length - 1));
+    slides.forEach((s, i) => { s.hidden = i !== onboardIdx; });
+    const dots = $("#onboard-dots");
+    dots.innerHTML = "";
+    slides.forEach((_, i) => {
+      const d = document.createElement("span");
+      if (i === onboardIdx) d.className = "on";
+      dots.appendChild(d);
+    });
+    $("#onboard-back").disabled = onboardIdx === 0;
+    $("#onboard-next").textContent = onboardIdx === slides.length - 1 ? "Finish" : "Next";
+  }
+  function openOnboard() {
+    $("#onboard-overlay").hidden = false;
+    showOnboard(0);
+  }
+  async function finishOnboard() {
+    $("#onboard-overlay").hidden = true;
+    try {
+      await fetch("/api/settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ onboarded: true }),
+      });
+    } catch (_) { /* flag syncs next launch; guide itself is done */ }
+  }
+  $("#replay-guide-btn").addEventListener("click", () => {
+    closeSettings();
+    openOnboard();
+  });
+  $("#onboard-skip").addEventListener("click", finishOnboard);
+  $("#onboard-back").addEventListener("click", () => showOnboard(onboardIdx - 1));
+  $("#onboard-next").addEventListener("click", async () => {
+    if (onboardIdx >= onboardSlides().length - 1) await finishOnboard();
+    else showOnboard(onboardIdx + 1);
+  });
+  // Hello CTA reuses the guarded dropzone opener.
+  $("#hello-add-btn").addEventListener("click", () => $("#dropzone").click());
 
   // ---------------- dropdown population ----------------
   let taskPrompts = {};
@@ -83,7 +128,8 @@
   async function loadSettings() {
     const s = await fetch("/api/settings").then((r) => r.json());
     $("#model-size").value = s.model_size;
-    $("#model-device").value = s.device;
+    // GPU-only builds: a stale "cpu" value has no matching option — coerce.
+    $("#model-device").value = s.device === "cpu" ? "cuda" : s.device;
     $("#model-compute").value = s.compute_type;
     // Language dropdown is populated from the model build itself,
     // so only valid codes can ever be selected.
@@ -111,14 +157,29 @@
       : s.llm.provider === "openrouter" ? s.llm.openrouter_api_key
       : s.llm.openai_api_key;
     toggleLlmFields();
+    updateFoldersPaths();
     refreshModelStatus();
+    return s;
   }
 
+  function updateModelPill(size, installed, loaded) {
+    const pill = $("#model-pill");
+    if (!pill) return;
+    const state = !installed ? "not downloaded" : loaded ? "in memory" : "installed";
+    pill.textContent = `${size} · ${state}`;
+  }
+
+  function updateFoldersPaths() {
+    const el = $("#folders-paths");
+    if (!el) return;
+    const out = ($("#output-dir").value.trim() || "results").replace(/[/\\]+$/, "");
+    el.innerHTML = `Models: <code>models/</code><br>Results: <code>${escapeHtml(out)}/&lt;name&gt;/</code><br>State: <code>data/</code> &nbsp; Temp: <code>data/work/</code>`;
+  }
   function toggleLlmFields() {
-    const prov = $("#llm-provider").value;
-    $("#llm-ollama-fields").hidden = prov !== "ollama";
-    $("#llm-compat-fields").hidden = prov !== "compat";
-    $("#llm-cloud-fields").hidden = !(prov === "anthropic" || prov === "openai" || prov === "openrouter");
+    const prov2 = $("#llm-provider").value;
+    $("#llm-ollama-fields").hidden = prov2 !== "ollama";
+    $("#llm-compat-fields").hidden = prov2 !== "compat";
+    $("#llm-cloud-fields").hidden = !(prov2 === "anthropic" || prov2 === "openai" || prov2 === "openrouter");
     // No fields at all for "none" — that's the point of it.
   }
   document.addEventListener("change", (e) => {
@@ -158,9 +219,11 @@
     if (r.ok) {
       $("#settings-saved").hidden = false;
       setTimeout(() => ($("#settings-saved").hidden = true), 2000);
+      updateFoldersPaths();
       refreshLlmModels(); // new key/host/provider saved -> re-list immediately
     }
   });
+  $("#output-dir").addEventListener("input", updateFoldersPaths);
 
   // ---------------- model management ----------------
   const modelBtns = ["download-model-btn", "load-model-btn", "unload-model-btn", "delete-model-btn"];
@@ -171,6 +234,7 @@
   async function refreshModelStatus() {
     const size = $("#model-size").value;
     const s = await fetch(`/api/models/${size}/status`).then((r) => r.json());
+    updateModelPill(size, s.installed, s.loaded);
     const el = $("#model-status");
     hideModelBtns();
     $("#model-progress").hidden = true;
@@ -198,8 +262,9 @@
     } else {
       el.innerHTML = `<span class="badge badge-queued">not installed</span> ${size}`;
       $("#model-progress-text").textContent = s.error ? `Download failed: ${s.error}` : "";
-      $("#download-model-btn").hidden = false;
-      $("#download-model-btn").textContent = s.error ? "Retry download" : "Download";
+      const dlBtn = $("#download-model-btn");
+      dlBtn.hidden = false;
+      dlBtn.innerHTML = `<svg class="ic ic-sm" width="15" height="15"><use href="#i-download"/></svg> ${s.error ? "Retry download" : "Download"}`;
     }
   }
 
@@ -221,15 +286,15 @@
   });
   $("#delete-model-btn").addEventListener("click", async () => {
     const size = $("#model-size").value;
-    if (!confirm(`Delete the downloaded "${size}" model from disk?\n\nIt will download again automatically if a job needs it.`)) return;
+    if (!await modalConfirm({ title: "Delete model?", message: `Delete the downloaded "${size}" model from disk?\n\nIt will download again automatically if a job needs it.`, okText: "Delete", danger: true })) return;
     const r = await fetch(`/api/models/${size}/delete`, { method: "POST" });
     const data = await r.json().catch(() => ({}));
-    if (!data.deleted) alert("Could not delete the model folder.");
+    if (!data.deleted) await modalAlert("Delete failed", "Could not delete the model folder.");
     refreshModelStatus();
   });
   $("#models-folder-btn").addEventListener("click", async () => {
     const r = await fetch(`/api/models/open-folder`, { method: "POST" });
-    if (!r.ok) alert("Model folder does not exist yet — download a model first.");
+    if (!r.ok) await modalAlert("No model folder", "Model folder does not exist yet — download a model first.");
   });
 
   // ---------------- queue ----------------
@@ -286,16 +351,33 @@
       : `${other} job(s)`;
     const list = $("#jobs-list");
     list.innerHTML = "";
-    if (!data.jobs.length) {
-      list.innerHTML = `<p class="empty muted">No jobs yet — drop files above.</p>`;
-      return;
-    }
+    // Empty queue shows a plain hello instead of a tutorial.
+    const empty = data.jobs.length === 0;
+    $("#landing-hello").hidden = !empty;
+    $("#jobs-pane").hidden = empty;
     data.jobs.forEach((j) => list.appendChild(jobCard(j)));
+  }
+
+  function progressBarHtml(fraction) {
+    // Determinate when the backend reports 0..1, indeterminate otherwise.
+    if (typeof fraction === "number" && isFinite(fraction)) {
+      const pct = Math.max(0, Math.min(100, fraction * 100)).toFixed(1);
+      return `<div class="progress-bar job-progress"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+    }
+    return `<div class="progress-bar job-progress"><div class="progress-fill indeterminate"></div></div>`;
+  }
+
+  function setProgressFill(el, fraction) {
+    const fill = el.querySelector(".job-progress .progress-fill");
+    if (!fill || typeof fraction !== "number" || !isFinite(fraction)) return;
+    fill.classList.remove("indeterminate");
+    fill.style.width = `${Math.max(0, Math.min(100, fraction * 100)).toFixed(1)}%`;
   }
 
   function jobCard(j) {
     const el = document.createElement("article");
     el.className = "job card";
+    el.dataset.status = j.status; // status accent border via CSS
     el.id = `job-${j.id}`;
 
     if (j.status === "staged") {
@@ -323,13 +405,15 @@
           </label>
         </div>
         ${showPrompt ? `
-        <label class="ctl">
-          <span class="muted">Prompt <span class="muted small">(editable — preset default, or type your own)</span></span>
-          <textarea class="job-prompt" rows="3" placeholder="Describe what you want from the transcript">${escapeHtml(j.custom_prompt || "")}</textarea>
-        </label>` : ""}
+        <details class="prompt-details">
+          <summary>Prompt (editable preset — or type your own)</summary>
+          <label class="ctl" style="margin-top:0.5rem">
+            <textarea class="job-prompt" rows="3" placeholder="Describe what you want from the transcript">${escapeHtml(j.custom_prompt || "")}</textarea>
+          </label>
+        </details>` : ""}
         <div class="job-actions">
-          <button class="btn btn-small start-btn" data-id="${j.id}">Start</button>
-          <button class="btn btn-ghost btn-small remove-btn" data-id="${j.id}">Remove</button>
+          <button class="btn btn-small start-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-play"/></svg> Start</button>
+          <button class="btn btn-ghost btn-small remove-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-trash"/></svg> Remove</button>
         </div>
       `;
       el.querySelector(".job-profile").addEventListener("change", async (e) => {
@@ -376,41 +460,55 @@
         <span class="muted small job-meta">${escapeHtml(j.profile)} &middot; ${escapeHtml(j.task)}</span>
       </div>
       <div class="job-stage muted">${escapeHtml(j.stage || "")}</div>
+      ${(j.status === "queued" || j.status === "running") ? progressBarHtml(j.fraction) : ""}
       ${j.error ? `<pre class="error">${escapeHtml(j.error)}</pre>` : ""}
       ${j.out_dir ? `<div class="saved-path">Saved to: <code>${escapeHtml(j.out_dir)}</code></div>` : ""}
       <div class="job-actions">
-        ${j.out_dir ? `<button class="btn btn-small open-folder-btn" data-id="${j.id}">&#128193; Open folder</button>` : ""}
-        ${j.status === "done" || j.status === "failed" ? `<button class="btn btn-ghost btn-small rm-btn" data-id="${j.id}">Remove</button>` : ""}
-        ${j.status === "done" && j.out_dir ? `<button class="btn btn-ghost btn-small btn-danger del-btn" data-id="${j.id}">Delete + files</button>` : ""}
+        ${j.out_dir ? `<button class="btn btn-small open-folder-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-folder"/></svg> Open folder</button>` : ""}
+        ${j.status === "failed" ? `<button class="btn btn-small retry-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-play"/></svg> Retry</button>` : ""}
+        ${j.status === "done" || j.status === "failed" ? `<button class="btn btn-ghost btn-small rm-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-trash"/></svg> Remove</button>` : ""}
+        ${j.status === "done" && j.out_dir ? `<button class="btn btn-ghost btn-small btn-danger del-btn" data-id="${j.id}"><svg class="ic ic-sm" width="15" height="15"><use href="#i-trash"/></svg> Delete + files</button>` : ""}
       </div>
     `;
     const openBtn = el.querySelector(".open-folder-btn");
     if (openBtn) {
       openBtn.addEventListener("click", async () => {
-        try {
-          const r = await fetch(`/api/jobs/${j.id}/open-folder`, { method: "POST" });
-          if (!r.ok) {
-            // FastAPI wraps unhandled 500s as {"detail":"Internal Server Error"};
-            // ask the text body for anything more specific.
-            const text = await r.text().catch(() => "");
-            let msg = "unknown";
-            try { msg = JSON.parse(text).detail || text || msg; } catch (_) { msg = text || msg; }
-            alert(`Could not open folder (HTTP ${r.status}): ${msg}`);
+          try {
+            const r = await fetch(`/api/jobs/${j.id}/open-folder`, { method: "POST" });
+            if (!r.ok) {
+              // FastAPI wraps unhandled 500s as {"detail":"Internal Server Error"};
+              // ask the text body for anything more specific.
+              const text = await r.text().catch(() => "");
+              let msg = "unknown";
+              try { msg = JSON.parse(text).detail || text || msg; } catch (_) { msg = text || msg; }
+              await modalAlert("Could not open folder", `HTTP ${r.status}: ${msg}`);
+            }
+          } catch (e) {
+            await modalAlert("Could not open folder", String(e));
           }
-        } catch (e) {
-          alert(`Could not open folder: ${e}`);
-        }
       });
     }
+    const retryBtn = el.querySelector(".retry-btn");
+    if (retryBtn) retryBtn.addEventListener("click", async () => {
+      const r = await fetch(`/api/jobs/${j.id}/retry`, { method: "POST" });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        let msg = "unknown";
+        try { msg = JSON.parse(text).detail || text || msg; } catch (_) { msg = text || msg; }
+        await modalAlert("Could not restart job", `HTTP ${r.status}: ${msg}`);
+        return;
+      }
+      refreshJobs();
+    });
     const rmBtn = el.querySelector(".rm-btn");
     if (rmBtn) rmBtn.addEventListener("click", async () => {
-      if (!confirm("Remove this job from the list? Files stay on disk.")) return;
+      if (!await modalConfirm({ title: "Remove job?", message: "Remove this job from the list? Files stay on disk.", okText: "Remove" })) return;
       await fetch(`/api/jobs/${j.id}/delete?delete_artifacts=false`, { method: "POST" });
       refreshJobs();
     });
     const delBtn = el.querySelector(".del-btn");
     if (delBtn) delBtn.addEventListener("click", async () => {
-      if (!confirm(`Delete this job AND its output folder?\n\n${j.out_dir}\n\nOnly the folder created by meetingnotes is deleted.`)) return;
+      if (!await modalConfirm({ title: "Delete job and files?", message: `Delete this job AND its output folder?\n\n${j.out_dir}\n\nOnly the folder created by meetingnotes is deleted.`, okText: "Delete", danger: true })) return;
       await fetch(`/api/jobs/${j.id}/delete?delete_artifacts=true`, { method: "POST" });
       refreshJobs();
     });
@@ -421,11 +519,15 @@
   function updateJobInPlace(payload) {
     const el = jobs.get(payload.id);
     if (!el) return refreshJobs();
+    if (payload.status) el.dataset.status = payload.status;
     const badge = el.querySelector(".badge");
     if (payload.status && badge) {
       badge.className = `badge badge-${payload.status}`;
       badge.textContent = payload.status;
     }
+    const bar = el.querySelector(".job-progress");
+    if (bar && payload.status) bar.hidden = !(payload.status === "queued" || payload.status === "running");
+    setProgressFill(el, payload.fraction);
     const stageEl = el.querySelector(".job-stage");
     if (payload.stage && stageEl) stageEl.textContent = payload.stage;
     if (payload.out_dir) {
@@ -454,18 +556,64 @@
     return d.innerHTML;
   }
 
+  // ---------------- in-page modal (no origin prefix like native dialogs) ----------------
+  function modalPrompt({ title, message, okText = "OK", danger = false, hideCancel = false }) {
+    return new Promise((resolve) => {
+      const overlay = $("#modal-overlay");
+      const titleEl = $("#modal-title");
+      const msgEl = $("#modal-message");
+      const okBtn = $("#modal-ok");
+      const cancelBtn = $("#modal-cancel");
+      titleEl.textContent = title;
+      msgEl.textContent = message;
+      okBtn.textContent = okText;
+      okBtn.classList.toggle("btn-danger-solid", danger);
+      cancelBtn.hidden = hideCancel;
+      overlay.hidden = false;
+      const done = (value) => {
+        overlay.hidden = true;
+        okBtn.onclick = cancelBtn.onclick = overlay.onclick = null;
+        document.removeEventListener("keydown", onKey);
+        resolve(value);
+      };
+      const onKey = (e) => { if (e.key === "Escape" && !hideCancel) done(false); };
+      okBtn.onclick = () => done(true);
+      cancelBtn.onclick = () => done(false);
+      overlay.onclick = (e) => { if (e.target === overlay && !hideCancel) done(false); };
+      document.addEventListener("keydown", onKey);
+      (hideCancel ? okBtn : cancelBtn).focus();
+    });
+  }
+  const modalConfirm = (opts) => modalPrompt(opts);
+  const modalAlert = (title, message) =>
+    modalPrompt({ title, message, okText: "OK", hideCancel: true });
+
   // ---------------- events (SSE) ----------------
+  // Single live stream per tab. The old code spawned a new EventSource on
+  // every error WITHOUT closing the failed one: each zombie kept a socket
+  // in CONNECTING state (plus its own native auto-retry). exe restarts /
+  // sleep-wake therefore accumulated streams until the browser's ~6
+  // connections-per-host pool was exhausted and pages stopped loading.
+  let eventStream = null;
+  let eventRetryMs = 1000;
   function subscribeEvents() {
+    if (eventStream) {
+      try { eventStream.close(); } catch (_) { /* already dead */ }
+      eventStream = null;
+    }
     const es = new EventSource("/api/events");
+    eventStream = es;
+    es.onopen = () => { eventRetryMs = 1000; }; // healthy again: reset backoff
     es.addEventListener("job", (e) => {
       const data = JSON.parse(e.data);
       if (data.status === "deleted") return refreshJobs();
-      // A transition to a different lifecycle state needs a card re-render
-      // (staged card -> processing card -> done card each have different UIs).
-      if (["queued", "running", "done", "failed", "staged"].includes(data.status)) {
-        return refreshJobs();
+      const card = jobs.get(data.id);
+      // Same-state progress ticks (stage/ETA text) update in place — smooth,
+      // no rebuild. A lifecycle change re-renders the card for its new UI.
+      if (card && data.status && card.dataset.status === data.status) {
+        return updateJobInPlace(data);
       }
-      updateJobInPlace(data); // same-state progress updates only
+      return refreshJobs();
     });
     es.addEventListener("model", (e) => {
       const data = JSON.parse(e.data);
@@ -484,12 +632,32 @@
         $("#model-progress-text").textContent = `Loading ${size} into memory...`;
       }
     });
-    es.onerror = () => setTimeout(subscribeEvents, 3000); // simple reconnect
+    // Close the failed stream BEFORE resubscribing so a flapping server
+    // can never stack zombie connections. Backoff caps at 30 s.
+    es.onerror = () => {
+      if (eventStream === es) {
+        try { es.close(); } catch (_) { /* already dead */ }
+        eventStream = null;
+      }
+      const wait = eventRetryMs + Math.random() * 500;
+      eventRetryMs = Math.min(eventRetryMs * 2, 30000);
+      setTimeout(subscribeEvents, wait);
+    };
   }
+  // Release the socket on tab close / navigation (bfcache included).
+  window.addEventListener("pagehide", () => {
+    if (eventStream) {
+      try { eventStream.close(); } catch (_) { /* already dead */ }
+      eventStream = null;
+    }
+  });
 
   // ---------------- LLM model list (Ollama) ----------------
   async function refreshLlmModels() {
     const hint = $("#llm-model-hint");
+    const btn = $("#refresh-llm-models");
+    if (btn.disabled) return; // a fetch is already in flight — no overlapping rebuilds
+    btn.disabled = true;
     hint.textContent = "Loading...";
     hint.style.color = "";
     // Query with the CURRENT form values so switching provider/host/key
@@ -555,6 +723,11 @@
         } else {
           hint.textContent = `${r.models.length} models available`;
         }
+        // A cloud key against a local daemon is silently unused — say so.
+        if (prov === "ollama" && $("#ollama-key").value.trim()
+            && /localhost|127\.0\.0\.1/.test($("#ollama-host").value.trim())) {
+          hint.textContent += " — key is unused against a local daemon; use the Cloud host for cloud models.";
+        }
       } else {
         // No models fetched — still provide Custom and any pending value
         const pending = window._pendingLlmModel || "";
@@ -574,14 +747,55 @@
       }
     } catch (e) {
       $("#llm-model-hint").textContent = "Failed to fetch models";
+    } finally {
+      btn.disabled = false;
     }
   }
 
   $("#refresh-llm-models").addEventListener("click", refreshLlmModels);
 
+  $("#browse-folder-btn").addEventListener("click", async () => {
+    const btn = $("#browse-folder-btn");
+    if (btn.disabled) return; // picker already open
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/settings/browse-folder", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current: $("#output-dir").value.trim() }),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        let msg = "unknown";
+        try { msg = JSON.parse(text).detail || text || msg; } catch (_) { msg = text || msg; }
+        await modalAlert("Folder picker failed", `HTTP ${r.status}: ${msg}`);
+        return;
+      }
+      const data = await r.json();
+      if (data.path) {
+        $("#output-dir").value = data.path;
+        updateFoldersPaths();
+      }
+    } catch (e) {
+      await modalAlert("Folder picker failed", String(e));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Host preset chips (Ollama Local/Cloud, LM Studio/llama.cpp/vLLM):
+  // one click fills the host and re-lists immediately.
+  document.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip[data-host]");
+    if (!chip) return;
+    const input = document.getElementById(chip.dataset.target);
+    if (!input) return;
+    input.value = chip.dataset.host;
+    refreshLlmModels();
+  });
+
   // ---------------- init ----------------
   $("#quit-btn").addEventListener("click", async () => {
-    if (!confirm("Shut down meetingnotes?")) return;
+    if (!await modalConfirm({ title: "Shut down MeetingNotes?", message: "The server stops and the window can be closed.", okText: "Shut down", danger: true })) return;
     try { await fetch("/api/shutdown", { method: "POST" }); } catch (_) {}
     document.body.innerHTML = "<main style='padding:2rem;font-family:sans-serif;color:#8b93a3'>Shutting down&hellip; you can close this tab.</main>";
   });
@@ -596,11 +810,13 @@
     sel.innerHTML = "";
     models.models.forEach((m) => sel.insertAdjacentHTML("beforeend", `<option value="${m.size}">${m.size}</option>`));
     await loadProfiles();
-    await loadSettings();
+    const settings = await loadSettings();
     // Fire-and-forget: the LLM model list must NEVER block the queue UI,
     // even if the cloud endpoint is slow or rate-limiting us.
     refreshLlmModels();
     await refreshJobs();
     subscribeEvents();
+    // First launch ever: slide-through guide. Reopenable via Settings.
+    if (settings && !settings.onboarded) openOnboard();
   })();
 })();

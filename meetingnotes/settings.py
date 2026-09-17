@@ -8,7 +8,9 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-SETTINGS_PATH = Path.home() / ".meetingnotes" / "settings.json"
+from .config import APP_DIR
+
+SETTINGS_PATH = APP_DIR / "settings.json"
 
 _DEFAULTS = {
     "model_size": "large-v3",
@@ -18,6 +20,7 @@ _DEFAULTS = {
     "default_profile": "generic",
     "default_task": "raw",
     "output_dir": "",
+    "onboarded": False,   # first-launch guide seen
     "llm": {
         "provider": "none",
         "model": "",
@@ -54,6 +57,7 @@ class AppSettings:
     default_profile: str = "generic"
     default_task: str = "raw"
     output_dir: str = ""                  # blank = Downloads\meetingnotes
+    onboarded: bool = False             # first-launch guide seen
     llm: LLMSettings = field(default_factory=LLMSettings)
 
     # -- public export (never exposes raw secrets) --------------------------
@@ -83,6 +87,16 @@ def load_settings() -> AppSettings:
     llm = pick(raw.get("llm", {}), _DEFAULTS["llm"], LLMSettings)
     scalar_keys = {k: v for k, v in _DEFAULTS.items() if k != "llm"}
     scalars = {k: raw.get(k, v) for k, v in scalar_keys.items()}
+    if "onboarded" not in raw and SETTINGS_PATH.is_file():
+        # Upgraded install: only returning users (with job history) skip the
+        # first-launch guide. A bare settings file — e.g. migrated from a
+        # legacy smoke test with no jobs — still gets the guide.
+        try:
+            jobs_data = json.loads((APP_DIR / "jobs.json").read_text(encoding="utf-8"))
+            if isinstance(jobs_data, dict) and jobs_data.get("jobs"):
+                scalars["onboarded"] = True
+        except (OSError, ValueError):
+            pass
     return AppSettings(llm=llm, **scalars)
 
 

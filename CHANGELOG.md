@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Retry button on failed job cards (failed → staged, profile/task/prompt kept).
+- Determinate job progress bar (0–100% across extract/download/transcribe/
+  correct/LLM) with live ETA text; same-state updates no longer rebuild cards.
+- Host preset chips in Settings: Ollama Local/Cloud, LM Studio/llama.cpp/vLLM.
+- First-launch guide with real-UI screenshots; replay from Settings.
+- Icon rail navigation, jobs model pill, per-job folders explanation.
+- Per-job folders use the file stem (`results/<name>/`, never `<name>.mp4`);
+  repeat runs get ` (2)`, ` (3)` suffixes instead of overwriting; failed runs
+  leave no empty folders behind.
+- Save-folder Browse button (native Explorer picker); host preset chips for
+  Ollama (Local/Cloud) and compat servers (LM Studio/llama.cpp/vLLM).
+- OpenAI/Anthropic providers rewritten to key-based REST (no SDK needed):
+  live model lists, token-free credential check, 401/429/404 mapping.
+### Fixed
+- Untouched preset prompts no longer coerce the LLM stage to `task=custom`.
+- LLM refresh button no longer trapped inside its label; fetches can't overlap.
+- Model download counters show decimals (`244.4/3090 MB` instead of `0/0 MB`).
+
 ## [0.2.0] - 2026-09
 
 ### Added
