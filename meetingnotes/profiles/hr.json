@@ -1,0 +1,20 @@
+{
+  "name": "hr",
+  "description": "Interviews, HR meetings, hiring syncs (RU with EN terms).",
+  "language": "ru",
+  "initial_prompt": "resume, CV, cover letter, screening, interview, technical interview, culture fit, offer, offer letter, compensation, salary, bonus, equity, benefits, probation period, onboarding, buddy, mentor, performance review, feedback, promotion, raise, PIP, termination, resignation, notice period, exit interview, referral, sourcing, pipeline, time to hire, offer acceptance rate, headcount, requisition, job description, requirements, remote, hybrid, relocation, visa sponsorship, background check, HRIS, ATS, резюме, сопроводительное письмо, скрининг, собеседование, техническое интервью, оффер, компенсация, зарплата, бонус, испытательный срок, онбординг, наставник, перформанс-ревью, обратная связь, повышение, увольнение, заявление, отработка, выходное интервью, рекомендация, вакансия, описание вакансии, требования, удалёнка, гибрид, релокация, проверка, синьор, мидл, джун",
+  "corrections": {
+    "cv": "CV",
+    "hr": "HR",
+    "pip": "PIP",
+    "hris": "HRIS",
+    "ats": "ATS",
+    "one on one": "one-on-one",
+    "эйчар": "HR",
+    "эйч-ар": "HR",
+    "сиви": "CV",
+    "экзит интервью": "exit interview",
+    "хедхантер": "HeadHunter",
+    "асесмент": "assessment"
+  }
+}

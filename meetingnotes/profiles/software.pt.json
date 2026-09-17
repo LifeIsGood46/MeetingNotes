@@ -1,0 +1,27 @@
+{
+  "name": "software",
+  "description": "Software development meetings (Brazilian Portuguese).",
+  "language": "pt",
+  "initial_prompt": "pull request, code review, merge, commit, deploy, release, hotfix, CI, pipeline, Docker, Kubernetes, GitHub, GitLab, API, endpoint, backend, frontend, banco de dados, migração, bug, exceção, cache, microsserviço, refatoração, testes unitários, homologação, produção, JavaScript, TypeScript, Python, SQL, repositório, branch, sprint, backlog, demonstração",
+  "corrections": {
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "kubernetes": "Kubernetes",
+    "docker": "Docker",
+    "vscode": "VS Code",
+    "graphql": "GraphQL",
+    "yaml": "YAML",
+    "api": "API",
+    "json": "JSON",
+    "sql": "SQL",
+    "javascrip": "JavaScript",
+    "node js": "Node.js",
+    "postgree": "Postgres"
+  }
+}

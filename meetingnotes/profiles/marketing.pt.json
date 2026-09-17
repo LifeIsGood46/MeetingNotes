@@ -1,0 +1,17 @@
+{
+  "name": "marketing",
+  "description": "Marketing and sales meetings, campaign reviews (Brazilian Portuguese).",
+  "language": "pt",
+  "initial_prompt": "marca, posicionamento, público-alvo, segmento, campanha, lançamento, promoção, desconto, landing page, CTR, CPC, CPM, ROI, ROAS, CAC, LTV, churn, retenção, alcance, impressões, tráfego, orgânico, SEO, newsletter, funil, leads, conversão, criativo, manchete, influenciador, webinar",
+  "corrections": {
+    "ctr": "CTR",
+    "cpc": "CPC",
+    "cpm": "CPM",
+    "roi": "ROI",
+    "roas": "ROAS",
+    "cac": "CAC",
+    "ltv": "LTV",
+    "seo": "SEO",
+    "smm": "SMM"
+  }
+}

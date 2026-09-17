@@ -1,0 +1,27 @@
+{
+  "name": "marketing",
+  "description": "Marketing and sales meetings, campaign reviews (EN/RU).",
+  "language": "ru",
+  "initial_prompt": "brand, awareness, positioning, target audience, persona, segment, campaign, launch, teaser, promo, discount, coupon, landing page, CTA, click-through rate, CTR, CPC, CPM, ROI, ROAS, CAC, LTV, churn, retention, engagement, reach, impressions, traffic, organic, paid, SEO, SMM, email marketing, newsletter, open rate, funnel, lead, MQL, SQL, conversion, creative, copy, headline, influencer, affiliate, PR, press release, webinar, event, бренд, узнаваемость, позиционирование, целевая аудитория, сегмент, кампания, запуск, промо, скидка, купон, лендинг, кликабельность, охват, показы, трафик, органика, лиды, конверсия, креатив, заголовок, блогер, вебинар, ретаргет",
+  "corrections": {
+    "ctr": "CTR",
+    "cpc": "CPC",
+    "cpm": "CPM",
+    "roi": "ROI",
+    "roas": "ROAS",
+    "cac": "CAC",
+    "ltv": "LTV",
+    "seo": "SEO",
+    "sem": "SEM",
+    "smm": "SMM",
+    "cpl": "CPL",
+    "mql": "MQL",
+    "sql": "SQL",
+    "ситиар": "CTR",
+    "сиэйси": "CAC",
+    "элтви": "LTV",
+    "роас": "ROAS",
+    "кол ту экшн": "call to action",
+    "эй би тест": "A/B test"
+  }
+}

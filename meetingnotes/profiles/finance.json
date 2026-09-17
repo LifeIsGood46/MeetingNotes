@@ -1,0 +1,18 @@
+{
+  "name": "finance",
+  "description": "Finance meetings, audits, budget reviews (RU with EN terms).",
+  "language": "ru",
+  "initial_prompt": "balance sheet, cash flow, EBITDA, margin, gross, net, revenue, expenses, capex, opex, budget, variance, forecast, audit, ledger, invoice, accounts payable, accounts receivable, reconciliation, depreciation, amortization, tax, VAT, payroll, dividend, equity, debt, loan, interest rate, credit, debit, treasury, exchange rate, hedge, portfolio, asset, liability, accrual, provision, write-off, fiscal year, quarter close, баланс, отчёт о прибылях и убытках, денежный поток, маржа, выручка, расходы, бюджет, аудит, счёт-фактура, дебиторка, кредиторка, сверка, амортизация, налог, НДС, зарплата, дивиденды, кредит, ставка, курс валют, актив, пассив, финансовый год, закрытие месяца",
+  "corrections": {
+    "ebitda": "EBITDA",
+    "vat": "VAT",
+    "p&l": "P&L",
+    "fx": "FX",
+    "kpi": "KPI",
+    "roi": "ROI",
+    "ебитда": "EBITDA",
+    "ндс": "НДС",
+    "кэш флоу": "cash flow",
+    "пиэндэл": "P&L"
+  }
+}

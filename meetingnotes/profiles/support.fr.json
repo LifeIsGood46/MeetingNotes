@@ -1,0 +1,15 @@
+{
+  "name": "support",
+  "description": "Customer support calls, incident reviews (French).",
+  "language": "fr",
+  "initial_prompt": "ticket, priorité, SLA, escalade, solution de contournement, journaux, captures d'écran, session à distance, rappel, CSAT, NPS, remboursement, garantie, incident, temps d'arrêt, correctif, compte, connexion, réinitialisation du mot de passe, facturation, abonnement, annulation, base de connaissances",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "csat": "CSAT",
+    "nps": "NPS",
+    "sla": "SLA",
+    "rma": "RMA",
+    "faq": "FAQ",
+    "2 fa": "2FA"
+  }
+}

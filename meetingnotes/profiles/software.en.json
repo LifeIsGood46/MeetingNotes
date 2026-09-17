@@ -1,0 +1,26 @@
+{
+  "name": "software",
+  "description": "Software development meetings, code reviews, standups (EN/RU code-switching).",
+  "language": "en",
+  "initial_prompt": "pull request, code review, merge, branch, commit, deploy, release, rollback, hotfix, CI, pipeline, Docker, Kubernetes, GitHub, GitLab, API, endpoint, backend, frontend, database, migration, bug, stack trace, exception, timeout, cache, Redis, queue, microservice, monolith, refactor, legacy code, unit test, integration test, coverage, staging, production, localhost, environment variable, dependency, package, npm, pip, JavaScript, TypeScript, Python, SQL, standup, sprint, backlog, demo, retro",
+  "corrections": {
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "stackoverflow": "Stack Overflow",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "kubernetes": "Kubernetes",
+    "docker": "Docker",
+    "vscode": "VS Code",
+    "graphql": "GraphQL",
+    "yaml": "YAML",
+    "api": "API",
+    "json": "JSON",
+    "sql": "SQL",
+    "ci": "CI"
+  }
+}

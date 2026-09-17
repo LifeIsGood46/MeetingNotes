@@ -1,0 +1,10 @@
+{
+  "name": "generic",
+  "description": "Generic meeting, Spanish vocabulary bias.",
+  "language": "es",
+  "initial_prompt": "reunión, discusión, tareas, plazos, acuerdo, seguimiento, puntos de acción, proyecto, equipo, cliente, presupuesto, reunión semanal, propuesta, decisión",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "suscribirse a miduism": ""
+  }
+}

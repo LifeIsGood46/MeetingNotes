@@ -1,0 +1,13 @@
+{
+  "name": "medical",
+  "description": "Medical meetings, consiliums, case discussions (RU with Latin terms).",
+  "language": "en",
+  "initial_prompt": "diagnosis, anamnesis, symptoms, blood pressure, ECG, MRI, CT scan, ultrasound, biopsy, dosage, prescription, contraindication, side effect, allergy, chronic, acute, remission, relapse, surgery, anesthesia, rehabilitation, therapy, cardiology, neurology, oncology, pediatrics, diabetes, hypertension, asthma, pneumonia, fracture, inflammation, infection, antibiotic, vaccine, referral, discharge, PCR, ELISA, patient history",
+  "corrections": {
+    "ecg": "ECG",
+    "mri": "MRI",
+    "ct scan": "CT scan",
+    "icd": "ICD",
+    "hiv": "HIV"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "generic",
+  "description": "Generic meeting, French vocabulary bias.",
+  "language": "fr",
+  "initial_prompt": "réunion, discussion, tâches, délais, accord, suivi, points d'action, projet, équipe, client, budget, réunion hebdomadaire, proposition, décision",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "sous-titrage st 501": "",
+    "sous-titrage st-501": ""
+  }
+}

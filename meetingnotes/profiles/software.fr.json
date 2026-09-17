@@ -1,0 +1,27 @@
+{
+  "name": "software",
+  "description": "Software development meetings (French).",
+  "language": "fr",
+  "initial_prompt": "pull request, code review, merge, commit, deploy, release, hotfix, CI, pipeline, Docker, Kubernetes, GitHub, GitLab, API, endpoint, backend, frontend, base de données, migration, bug, exception, cache, microservice, refactoring, tests unitaires, staging, production, JavaScript, TypeScript, Python, SQL, dépôt, branche, déploiement",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "kubernetes": "Kubernetes",
+    "docker": "Docker",
+    "vscode": "VS Code",
+    "graphql": "GraphQL",
+    "yaml": "YAML",
+    "api": "API",
+    "json": "JSON",
+    "sql": "SQL",
+    "javascrip": "JavaScript",
+    "node js": "Node.js"
+  }
+}

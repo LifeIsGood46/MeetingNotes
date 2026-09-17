@@ -1,0 +1,18 @@
+{
+  "name": "marketing",
+  "description": "Marketing and sales meetings, campaign reviews (French).",
+  "language": "fr",
+  "initial_prompt": "marque, positionnement, public cible, segment, campagne, lancement, promotion, remise, landing page, CTR, CPC, CPM, ROI, ROAS, CAC, LTV, attrition, fidélisation, portée, impressions, trafic, organique, SEO, newsletter, entonnoir, prospects, conversion, créatif, titre, influenceur, webinaire",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "ctr": "CTR",
+    "cpc": "CPC",
+    "cpm": "CPM",
+    "roi": "ROI",
+    "roas": "ROAS",
+    "cac": "CAC",
+    "ltv": "LTV",
+    "seo": "SEO",
+    "smm": "SMM"
+  }
+}

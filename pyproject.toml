@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meetingnotes"
+version = "0.2.0"
+description = "Meeting recordings -> transcripts -> structured documents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "faster-whisper>=1.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.30"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+meetingnotes = "meetingnotes.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["meetingnotes*"]
+
+[tool.setuptools.package-data]
+meetingnotes = [
+    "profiles/*.json",
+    "webapp/templates/*.html",
+    "webapp/static/*",
+]

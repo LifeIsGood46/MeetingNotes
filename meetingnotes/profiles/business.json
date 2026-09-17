@@ -1,0 +1,29 @@
+{
+  "name": "business",
+  "description": "General business meetings, planning, sales calls (EN/RU).",
+  "language": "ru",
+  "initial_prompt": "quarter, quarterly, KPI, OKR, roadmap, deadline, milestone, stakeholder, bottleneck, sync-up, follow-up, action items, budget, forecast, revenue, churn, retention, conversion, funnel, pipeline, CRM, deal, upsell, onboarding, headcount, hiring, all-hands, one-on-one, standup, retro, sprint, backlog, scope, deliverable, deck, pitch, demo, contract, invoice, NDA, SLA, квартал, выручка, бюджет, прогноз, планёрка, созвон, дедлайн, стейкхолдер, воронка, сделка, счёт, договор, оплата, дейли, груминг",
+  "corrections": {
+    "kpi": "KPI",
+    "okr": "OKR",
+    "crm": "CRM",
+    "sla": "SLA",
+    "nda": "NDA",
+    "roi": "ROI",
+    "daily stand up": "daily standup",
+    "one on one": "one-on-one",
+    "роадмап": "roadmap",
+    "роудмап": "roadmap",
+    "фоллоу ап": "follow-up",
+    "экшен айтемс": "action items",
+    "уан он уан": "one-on-one",
+    "ван он ван": "one-on-one",
+    "олл хэндс": "all-hands",
+    "кейпиай": "KPI",
+    "оукээр": "OKR",
+    "сиарэм": "CRM",
+    "эсэлэй": "SLA",
+    "эндиэй": "NDA",
+    "ароуай": "ROI"
+  }
+}

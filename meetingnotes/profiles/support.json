@@ -1,0 +1,21 @@
+{
+  "name": "support",
+  "description": "Customer support calls, incident reviews (RU with EN terms).",
+  "language": "ru",
+  "initial_prompt": "ticket, priority, SLA, escalation, workaround, reproduction steps, logs, screenshots, screen sharing, remote session, callback, follow-up, CSAT, NPS, churn, refund, replacement, warranty, RMA, outage, downtime, uptime, incident, postmortem, status page, maintenance window, hotfix, patch, rollback, account, login, password reset, 2FA, permissions, billing, subscription, cancellation, onboarding, knowledge base, FAQ, тикет, заявка, приоритет, эскалация, обходное решение, шаги воспроизведения, логи, скриншоты, удалённая сессия, обратный звонок, возврат, замена, гарантия, сбой, даунтайм, инцидент, статус-страница, пользователь, аккаунт, вход, сброс пароля, двухфакторка, права доступа, оплата, подписка, отмена, база знаний, созвон",
+  "corrections": {
+    "csat": "CSAT",
+    "nps": "NPS",
+    "sla": "SLA",
+    "rma": "RMA",
+    "faq": "FAQ",
+    "2fa": "2FA",
+    "эсэлэй": "SLA",
+    "сиэсат": "CSAT",
+    "энпиэс": "NPS",
+    "арэмэй": "RMA",
+    "фоллоу ап": "follow-up",
+    "статус пейдж": "status page",
+    "хот фикс": "hotfix"
+  }
+}

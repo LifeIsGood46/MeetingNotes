@@ -1,0 +1,10 @@
+{
+  "name": "education",
+  "description": "Lectures, classes, academic meetings (RU).",
+  "language": "en",
+  "initial_prompt": "lecture, seminar, workshop, syllabus, curriculum, assignment, homework, quiz, exam, midterm, grade, credit, semester, enrollment, attendance, thesis, dissertation, defense, advisor, scholarship, tuition, dean, department, faculty, bachelor, master, PhD, GPA, research, citation, plagiarism, deadline, extension, office hours, feedback, rubric, retake, expulsion",
+  "corrections": {
+    "gpa": "GPA",
+    "phd": "PhD"
+  }
+}

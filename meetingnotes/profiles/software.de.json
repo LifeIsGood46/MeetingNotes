@@ -1,0 +1,27 @@
+{
+  "name": "software",
+  "description": "Software development meetings (German).",
+  "language": "de",
+  "initial_prompt": "Pull Request, Code Review, Merge, Commit, Deploy, Release, Hotfix, CI, Pipeline, Docker, Kubernetes, GitHub, GitLab, API, Endpoint, Backend, Frontend, Datenbank, Migration, Bug, Exception, Cache, Microservice, Refactoring, Unit Tests, Staging, Produktion, JavaScript, TypeScript, Python, SQL, Repository, Branch, Deployment, Standup, Backlog",
+  "corrections": {
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "kubernetes": "Kubernetes",
+    "docker": "Docker",
+    "vscode": "VS Code",
+    "graphql": "GraphQL",
+    "yaml": "YAML",
+    "api": "API",
+    "json": "JSON",
+    "sql": "SQL",
+    "node js": "Node.js",
+    "javascrip": "JavaScript",
+    "postgree": "Postgres"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "science",
+  "description": "Research meetings, lab syncs, paper discussions (EN/RU).",
+  "language": "ru",
+  "initial_prompt": "hypothesis, experiment, control group, sample, dataset, variable, correlation, causation, p-value, confidence interval, regression, model, training, validation, overfitting, peer review, journal, impact factor, citation, preprint, conference, grant, funding, protocol, reproducibility, baseline, benchmark, ablation, paper, abstract, methodology, results, discussion, conclusion, references, appendix, figure, supplementary, гипотеза, эксперимент, контрольная группа, выборка, данные, переменная, корреляция, модель, обучение, валидация, переобучение, рецензирование, журнал, цитирование, препринт, конференция, грант, протокол, воспроизводимость, статья, аннотация, методология, результаты, выводы, скопус",
+  "corrections": {
+    "p value": "p-value",
+    "аблейшн": "ablation",
+    "бейзлайн": "baseline",
+    "бейслайн": "baseline",
+    "пир ревью": "peer review",
+    "скопус": "Scopus"
+  }
+}

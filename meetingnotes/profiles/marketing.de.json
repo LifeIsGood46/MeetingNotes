@@ -1,0 +1,18 @@
+{
+  "name": "marketing",
+  "description": "Marketing and sales meetings, campaign reviews (German).",
+  "language": "de",
+  "initial_prompt": "Marke, Positionierung, Zielgruppe, Segment, Kampagne, Launch, Aktion, Rabatt, Landingpage, CTR, CPC, CPM, ROI, ROAS, CAC, LTV, Kundenabwanderung, Bindung, Reichweite, Impressionen, Traffic, organisch, SEO, Newsletter, Trichter, Leads, Conversion, Kreativ, Schlagzeile, Influencer, Webinar",
+  "corrections": {
+    "ctr": "CTR",
+    "cpc": "CPC",
+    "cpm": "CPM",
+    "roi": "ROI",
+    "roas": "ROAS",
+    "cac": "CAC",
+    "ltv": "LTV",
+    "seo": "SEO",
+    "smm": "SMM",
+    "landing page": "Landingpage"
+  }
+}

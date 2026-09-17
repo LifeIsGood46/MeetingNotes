@@ -1,0 +1,7 @@
+{
+  "name": "generic",
+  "description": "Generic meeting, no domain-specific vocabulary.",
+  "language": "en",
+  "initial_prompt": "meeting, discussion, tasks, deadlines, agreement, follow-up, action items",
+  "corrections": {}
+}

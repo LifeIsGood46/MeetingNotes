@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>meetingnotes</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">meetingnotes</div>
+      <nav>
+        <button class="nav-btn active" data-view="queue">Queue</button>
+        <button class="nav-btn" data-view="settings">Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="muted">recordings &rarr; documents</div>
+        <div class="muted small" id="app-version" title="Build served by this instance"></div>
+        <button id="quit-btn" class="nav-btn quit">Quit</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <!-- QUEUE VIEW -->
+      <section id="view-queue" class="view active">
+        <div class="dropzone" id="dropzone" title="Click to browse, or drop files here">
+          <div class="dropzone-inner">
+            <strong>Drop audio / video files here</strong>
+            <span class="muted">or click to browse &mdash; multiple files supported</span>
+          </div>
+          <input type="file" id="file-input" multiple hidden />
+        </div>
+
+        <div class="hint-bar">
+          <span class="hint-step"><b>1.</b> Add one or more recordings</span>
+          <span class="hint-step"><b>2.</b> Each file appears as a card &mdash; set its profile, output &amp; prompt there</span>
+          <span class="hint-step"><b>3.</b> Press <b>Start</b> to transcribe</span>
+          <span class="hint-step"><b>4.</b> Open the folder with your results in Explorer</span>
+        </div>
+
+        <div class="jobs-header">
+          <h2>Jobs</h2>
+          <span class="muted" id="jobs-count"></span>
+        </div>
+        <div id="jobs-list" class="jobs-list"></div>
+      </section>
+
+      <!-- SETTINGS VIEW -->
+      <section id="view-settings" class="view">
+        <div class="card">
+          <h2>Transcription model</h2>
+          <div class="settings-grid">
+            <label class="ctl">
+              <span class="muted">Model</span>
+              <select id="model-size"></select>
+            </label>
+            <label class="ctl">
+              <span class="muted">Device</span>
+              <select id="model-device">
+                <option value="cuda">cuda</option>
+                <option value="cpu">cpu</option>
+              </select>
+            </label>
+            <label class="ctl">
+              <span class="muted">Compute type</span>
+              <select id="model-compute">
+                <option value="float16">float16</option>
+                <option value="int8">int8</option>
+                <option value="int8_float16">int8_float16</option>
+                <option value="float32">float32</option>
+              </select>
+            </label>
+          </div>
+          <div class="model-status-row">
+            <div id="model-status"></div>
+            <div class="model-actions">
+              <button class="btn btn-ghost btn-small" id="download-model-btn">Download</button>
+              <button class="btn btn-ghost btn-small" id="load-model-btn" hidden>Load</button>
+              <button class="btn btn-ghost btn-small" id="unload-model-btn" hidden>Unload</button>
+              <button class="btn btn-ghost btn-small btn-danger" id="delete-model-btn" hidden>Delete</button>
+              <button class="btn btn-ghost btn-small" id="models-folder-btn" title="Open the model cache folder in Explorer">Models folder</button>
+            </div>
+          </div>
+          <div class="progress-bar" id="model-progress" hidden>
+            <div class="progress-fill" id="model-progress-fill"></div>
+          </div>
+          <div class="muted small" id="model-progress-text"></div>
+        </div>
+
+        <div class="card">
+          <h2>LLM (for formatted output)</h2>
+          <div class="settings-grid">
+            <label class="ctl">
+              <span class="muted">Provider</span>
+              <select id="llm-provider">
+                <option value="none">None (raw transcripts only)</option>
+                <option value="ollama">Ollama (local or cloud)</option>
+                <option value="compat">LM Studio / OpenAI-compatible (local or hosted)</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </label>
+            <label class="ctl">
+              <span class="muted">Model <button type="button" id="refresh-llm-models" title="Fetch available models" style="margin-left:6px;padding:2px 6px;font-size:0.75rem">↻</button></span>
+              <select id="llm-model"></select>
+              <input id="llm-model-custom" placeholder="Custom model name" style="margin-top:6px;display:none" />
+              <span class="muted small" id="llm-model-hint"></span>
+            </label>
+          </div>
+
+          <div class="settings-grid" id="llm-ollama-fields">
+            <label class="ctl">
+              <span class="muted">Ollama host</span>
+              <input id="ollama-host" placeholder="http://localhost:11434" />
+            </label>
+            <label class="ctl">
+              <span class="muted">Ollama API key (cloud; blank for local)</span>
+              <input id="ollama-key" type="password" />
+            </label>
+          </div>
+
+          <div class="settings-grid" id="llm-compat-fields" hidden>
+            <label class="ctl">
+              <span class="muted">Server URL (LM Studio, vLLM, llama.cpp…)</span>
+              <input id="compat-url" placeholder="http://localhost:1234/v1" />
+            </label>
+            <label class="ctl">
+              <span class="muted">API key (blank for local servers)</span>
+              <input id="compat-key" type="password" />
+            </label>
+          </div>
+
+          <div class="settings-grid" id="llm-cloud-fields" hidden>
+            <label class="ctl grow">
+              <span class="muted">API key</span>
+              <input id="cloud-key" type="password" />
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Output</h2>
+          <div class="settings-grid">
+            <label class="ctl">
+              <span class="muted">Transcription language</span>
+              <select id="language"></select>
+            </label>
+            <label class="ctl">
+              <span class="muted">Default profile for new jobs</span>
+              <select id="default-profile"></select>
+            </label>
+            <label class="ctl">
+              <span class="muted">Default output for new jobs</span>
+              <select id="default-task"></select>
+            </label>
+            <label class="ctl grow">
+              <span class="muted">Save folder <span class="muted small">(blank = Downloads\meetingnotes)</span></span>
+              <input id="output-dir" placeholder="C:\Users\you\Downloads\meetingnotes" />
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn" id="save-settings-btn">Save settings</button>
+          <span class="muted" id="settings-saved" hidden>Saved.</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "dashboard",
+  "description": "Dashboard editor meetings: components, grid/dockable layouts, clipboard, undo/redo, E2E coverage.",
+  "language": "ru",
+  "initial_prompt": "dashboard, edit mode, component, panel, grid layout, dockable layout, copy, paste, clone, undo, redo, state history, clipboard, vector drawing, SVG, alignment, toolbar, data table editor, spreadsheet, bindings, events, component tree, context menu, drag, drop, breakpoint, save, persist, export, import, test coverage, test plan, regression, copyComponent, pasteComponent, cloneComponent, Playwright, E2E, automation",
+  "corrections": {
+    "шоу месседж": "showMessage",
+    "копи компонент": "copyComponent",
+    "паст компонент": "pasteComponent",
+    "клон компонент": "cloneComponent",
+    "грид лейаут": "grid layout",
+    "докабл лейаут": "dockable layout",
+    "плейрайт": "Playwright"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "generic",
+  "description": "Generic meeting, Brazilian Portuguese vocabulary bias.",
+  "language": "pt",
+  "initial_prompt": "reunião, discussão, tarefas, prazos, acordo, acompanhamento, itens de ação, projeto, equipe, cliente, orçamento, reunião semanal, proposta, decisão",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "meia pipe": ""
+  }
+}

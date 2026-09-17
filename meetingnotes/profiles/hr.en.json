@@ -1,0 +1,14 @@
+{
+  "name": "hr",
+  "description": "Interviews, HR meetings, hiring syncs (RU with EN terms).",
+  "language": "en",
+  "initial_prompt": "resume, CV, cover letter, screening, interview, technical interview, culture fit, offer, offer letter, compensation, salary, bonus, equity, benefits, probation period, onboarding, buddy, mentor, performance review, feedback, promotion, raise, PIP, termination, resignation, notice period, exit interview, referral, sourcing, pipeline, time to hire, offer acceptance rate, headcount, requisition, job description, requirements, remote, hybrid, relocation, visa sponsorship, background check, HRIS, ATS, assessment",
+  "corrections": {
+    "cv": "CV",
+    "hr": "HR",
+    "pip": "PIP",
+    "hris": "HRIS",
+    "ats": "ATS",
+    "one on one": "one-on-one"
+  }
+}

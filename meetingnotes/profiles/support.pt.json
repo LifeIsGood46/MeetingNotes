@@ -1,0 +1,14 @@
+{
+  "name": "support",
+  "description": "Customer support calls, incident reviews (Brazilian Portuguese).",
+  "language": "pt",
+  "initial_prompt": "ticket, prioridade, SLA, escalonamento, solução alternativa, logs, capturas de tela, sessão remota, retorno de chamada, CSAT, NPS, reembolso, garantia, incidente, tempo de inatividade, patch, conta, login, redefinição de senha, faturamento, assinatura, cancelamento, base de conhecimento",
+  "corrections": {
+    "csat": "CSAT",
+    "nps": "NPS",
+    "sla": "SLA",
+    "rma": "RMA",
+    "faq": "FAQ",
+    "2 fa": "2FA"
+  }
+}

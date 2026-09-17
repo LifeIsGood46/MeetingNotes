@@ -1,0 +1,15 @@
+{
+  "name": "business",
+  "description": "General business meetings, planning, sales calls (Spanish).",
+  "language": "es",
+  "initial_prompt": "trimestre, KPI, OKR, hoja de ruta, fecha límite, interesados, presupuesto, ingresos, conversión, embudo, CRM, trato, contrato, factura, NDA, SLA, reunión, seguimiento, cliente, equipo, entrega, propuesta",
+  "corrections": {
+    "kpi": "KPI",
+    "okr": "OKR",
+    "crm": "CRM",
+    "sla": "SLA",
+    "nda": "NDA",
+    "roi": "ROI",
+    "onboarding": "onboarding"
+  }
+}

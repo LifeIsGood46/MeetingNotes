@@ -1,0 +1,12 @@
+{
+  "name": "education",
+  "description": "Lectures, classes, academic meetings (RU).",
+  "language": "ru",
+  "initial_prompt": "lecture, seminar, workshop, syllabus, curriculum, assignment, homework, quiz, exam, midterm, grade, credit, semester, enrollment, attendance, thesis, dissertation, defense, advisor, scholarship, tuition, dean, department, faculty, bachelor, master, PhD, research, citation, plagiarism, deadline, extension, office hours, feedback, rubric, retake, expulsion, лекция, семинар, практикум, программа курса, задание, домашка, зачёт, экзамен, сессия, оценка, стипендия, семестр, посещаемость, диплом, диссертация, защита, научный руководитель, кафедра, деканат, бакалавриат, магистратура, аспирантура, пересдача, отчисление, автомат, хвосты",
+  "corrections": {
+    "gpa": "GPA",
+    "phd": "PhD",
+    "джипиэй": "GPA",
+    "пиэйчди": "PhD"
+  }
+}

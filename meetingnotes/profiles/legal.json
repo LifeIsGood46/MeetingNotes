@@ -1,0 +1,14 @@
+{
+  "name": "legal",
+  "description": "Legal meetings, contract reviews, negotiations (RU with EN terms).",
+  "language": "ru",
+  "initial_prompt": "contract, clause, amendment, breach, liability, indemnity, warranty, termination, force majeure, jurisdiction, arbitration, litigation, plaintiff, defendant, affidavit, verdict, appeal, settlement, NDA, power of attorney, notary, statute, regulation, compliance, due diligence, intellectual property, trademark, copyright, patent, license, escrow, addendum, governing law, waiver, assignment, договор, пункт, приложение, ответственность, неустойка, расторжение, форс-мажор, подсудность, арбитраж, иск, истец, ответчик, решение суда, апелляция, мировое соглашение, доверенность, нотариус, закон, соответствие, интеллектуальная собственность, товарный знак, авторское право, патент, лицензия, досудебка, претензия",
+  "corrections": {
+    "nda": "NDA",
+    "gdpr": "GDPR",
+    "ip address": "IP address",
+    "форс мажор": "форс-мажор",
+    "джидипиар": "GDPR",
+    "дью дилидженс": "due diligence"
+  }
+}

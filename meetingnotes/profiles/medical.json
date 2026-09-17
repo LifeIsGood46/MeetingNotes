@@ -1,0 +1,16 @@
+{
+  "name": "medical",
+  "description": "Medical meetings, consiliums, case discussions (RU with Latin terms).",
+  "language": "ru",
+  "initial_prompt": "diagnosis, anamnesis, symptoms, blood pressure, ECG, MRI, CT scan, ultrasound, biopsy, dosage, prescription, contraindication, side effect, allergy, chronic, acute, remission, relapse, surgery, anesthesia, rehabilitation, therapy, cardiology, neurology, oncology, pediatrics, diabetes, hypertension, asthma, pneumonia, fracture, inflammation, infection, antibiotic, vaccine, referral, discharge, диагноз, анамнез, симптомы, давление, ЭКГ, МРТ, КТ, УЗИ, биопсия, дозировка, рецепт, противопоказания, побочный эффект, аллергия, хронический, острый, ремиссия, рецидив, операция, анестезия, реабилитация, терапия, кардиология, неврология, онкология, педиатрия, диабет, гипертония, астма, пневмония, перелом, воспаление, инфекция, антибиотик, вакцина, выписка, направление",
+  "corrections": {
+    "ecg": "ECG",
+    "mri": "MRI",
+    "ct scan": "CT scan",
+    "icd": "ICD",
+    "hiv": "HIV",
+    "узи": "УЗИ",
+    "мрт": "МРТ",
+    "кт": "КТ"
+  }
+}

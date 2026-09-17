@@ -1,0 +1,15 @@
+{
+  "name": "business",
+  "description": "General business meetings, planning, sales calls (Brazilian Portuguese).",
+  "language": "pt",
+  "initial_prompt": "trimestre, KPI, OKR, roadmap, prazo, stakeholders, orçamento, receita, conversão, funil, CRM, negócio, contrato, fatura, NDA, SLA, reunião, cliente, equipe, entregável, proposta",
+  "corrections": {
+    "kpi": "KPI",
+    "okr": "OKR",
+    "crm": "CRM",
+    "sla": "SLA",
+    "nda": "NDA",
+    "roi": "ROI",
+    "onboarding": "onboarding"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "support",
+  "description": "Customer support calls, incident reviews (German).",
+  "language": "de",
+  "initial_prompt": "Ticket, Priorität, SLA, Eskalation, Workaround, Protokolle, Screenshots, Fernsitzung, Rückruf, CSAT, NPS, Rückerstattung, Garantie, Vorfall, Ausfallzeit, Patch, Konto, Anmeldung, Passwort zurücksetzen, Abrechnung, Abonnement, Kündigung, Wissensdatenbank",
+  "corrections": {
+    "csat": "CSAT",
+    "nps": "NPS",
+    "sla": "SLA",
+    "rma": "RMA",
+    "faq": "FAQ"
+  }
+}

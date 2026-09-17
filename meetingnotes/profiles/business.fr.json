@@ -1,0 +1,16 @@
+{
+  "name": "business",
+  "description": "General business meetings, planning, sales calls (French).",
+  "language": "fr",
+  "initial_prompt": "trimestre, KPI, OKR, feuille de route, échéance, parties prenantes, budget, revenus, conversion, tunnel, CRM, contrat, facture, NDA, SLA, réunion, suivi, client, équipe, livrable, proposition",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "kpi": "KPI",
+    "okr": "OKR",
+    "crm": "CRM",
+    "sla": "SLA",
+    "nda": "NDA",
+    "roi": "ROI",
+    "onboarding": "onboarding"
+  }
+}

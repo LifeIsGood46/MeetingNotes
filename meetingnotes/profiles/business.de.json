@@ -1,0 +1,16 @@
+{
+  "name": "business",
+  "description": "General business meetings, planning, sales calls (German).",
+  "language": "de",
+  "initial_prompt": "Quartal, KPI, OKR, Roadmap, Deadline, Stakeholder, Budget, Umsatz, Conversion, Trichter, CRM, Deal, Vertrag, Rechnung, NDA, SLA, Besprechung, Kunde, Team, Lieferung, Vorschlag, Follow-up",
+  "corrections": {
+    "kpi": "KPI",
+    "okr": "OKR",
+    "crm": "CRM",
+    "sla": "SLA",
+    "nda": "NDA",
+    "roi": "ROI",
+    "stakeholder": "Stakeholder",
+    "onboarding": "Onboarding"
+  }
+}

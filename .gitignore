@@ -1,0 +1,41 @@
+# Private meeting recordings / transcripts / generated docs вЂ” never publish
+data/
+archive/
+work/
+out/
+examples/*.wav
+examples/*.mp4
+examples/*.mp3
+
+# Build artifacts
+build/
+meetingnotes.exe
+meetingnotes-cli.exe
+*.spec
+.pytest_cache/
+.playwright-mcp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Media in general (defensive)
+*.mp4
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.m4a
+
+# Env / API keys
+.env
+*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

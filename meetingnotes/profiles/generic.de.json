@@ -1,0 +1,10 @@
+{
+  "name": "generic",
+  "description": "Generic meeting, German vocabulary bias.",
+  "language": "de",
+  "initial_prompt": "Besprechung, Aufgaben, Fristen, Vereinbarung, Projekt, Team, Kunde, Budget, wöchentliches Meeting, Vorschlag, Entscheidung, Nachbesprechung, Aufgabepunkte",
+  "corrections": {
+    "sous-titrage st'501": "",
+    "terminieren": ""
+  }
+}

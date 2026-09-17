@@ -1,0 +1,11 @@
+{
+  "name": "legal",
+  "description": "Legal meetings, contract reviews, negotiations (RU with EN terms).",
+  "language": "en",
+  "initial_prompt": "contract, clause, amendment, breach, liability, indemnity, warranty, termination, force majeure, jurisdiction, arbitration, litigation, plaintiff, defendant, affidavit, verdict, appeal, settlement, NDA, GDPR, power of attorney, notary, statute, regulation, compliance, due diligence, intellectual property, trademark, copyright, patent, license, escrow, addendum, governing law, waiver, assignment, discovery, claim",
+  "corrections": {
+    "nda": "NDA",
+    "gdpr": "GDPR",
+    "ip address": "IP address"
+  }
+}
