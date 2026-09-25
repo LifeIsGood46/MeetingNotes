@@ -255,6 +255,44 @@ def test_staged_jobs_survive_restart(tmp_path, monkeypatch):
     assert restored.status == "staged"  # staged survives, NOT marked failed
 
 
+def test_cancel_event_lifecycle(queue):
+    job = queue.create("run.mp4", "generic", "raw")
+    queue.set_status(job, "running")
+
+    assert queue.request_cancel(job.id) is True
+    assert queue.cancel_event(job.id).is_set()
+
+    queue.clear_cancel(job.id)  # a new start must not inherit the cancel
+    ev = queue.cancel_event(job.id)
+    assert ev is None or not ev.is_set()
+
+
+def test_cancel_refused_for_staged(queue):
+    job = queue.create("s.mp4", "generic", "raw")
+    queue.set_status(job, "staged")
+    assert queue.request_cancel(job.id) is False
+
+
+def test_remove_clears_cancel_event(queue):
+    job = queue.create("r.mp4", "generic", "raw")
+    queue.set_status(job, "running")
+    queue.request_cancel(job.id)
+    queue.remove(job.id)
+    assert queue.cancel_event(job.id) is None
+
+
+def test_cancelled_jobs_do_not_become_failed_on_restart(tmp_path, monkeypatch):
+    import meetingnotes.webapp.jobs as jobs_mod
+
+    monkeypatch.setattr(jobs_mod, "STATE_PATH", tmp_path / "jobs.json")
+    q1 = jobs_mod.JobQueue()
+    job = q1.create("c.mp4", "generic", "raw")
+    job.status = "cancelled"
+    q1.persist()
+
+    assert jobs_mod.JobQueue().get(job.id).status == "cancelled"
+
+
 def test_clear_with_delete_removes_only_marked_dirs(tmp_path, monkeypatch):
     import meetingnotes.webapp.jobs as jobs_mod
 

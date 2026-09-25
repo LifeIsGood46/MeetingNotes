@@ -34,6 +34,8 @@ venv/
 *.wav
 *.flac
 *.m4a
+# ...except the built-in demo recording that ships with the app
+!meetingnotes/webapp/static/sample.mp3
 
 # Env / API keys
 .env
@@ -44,3 +46,4 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+vendor/

@@ -16,6 +16,7 @@ class Profile:
     language: str = "ru"
     initial_prompt: str = ""
     corrections: dict[str, str] = field(default_factory=dict)
+    model: str = ""  # optional per-profile whisper model preset (e.g. "tiny")
 
 
 def _split_stem(stem: str) -> tuple[str, str | None]:
@@ -34,6 +35,7 @@ def _read_profile_file(path: Path, fallback_name: str) -> Profile:
         language=data.get("language", "ru"),
         initial_prompt=data.get("initial_prompt", ""),
         corrections=data.get("corrections", {}),
+        model=data.get("model", ""),
     )
 
 

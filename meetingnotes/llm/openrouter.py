@@ -7,6 +7,7 @@ import os
 import urllib.error
 import urllib.request
 
+from ..net import ssl_context, ssl_error_hint
 from .base import LLMProvider, LLMResponse, LLMError
 
 API_BASE = "https://openrouter.ai/api/v1"
@@ -31,7 +32,7 @@ class OpenRouterProvider(LLMProvider):
         req = urllib.request.Request(f"{API_BASE}{path}", data=data, headers=headers,
                                      method="POST" if payload is not None else "GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
@@ -54,6 +55,9 @@ class OpenRouterProvider(LLMProvider):
             body = e.read().decode("utf-8", "replace")[:300]
             raise LLMError(f"OpenRouter request failed ({e.code}): {body}", http_code=e.code) from e
         except Exception as e:
+            hint = ssl_error_hint(e)
+            if hint:
+                raise LLMError(f"OpenRouter connection failed: {hint}") from e
             raise LLMError(f"Could not reach OpenRouter: {e}.") from e
 
     def list_models(self, *, free_only: bool = False) -> list[str]:

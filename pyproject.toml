@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meetingnotes"
-version = "0.2.0"
+version = "0.3.0"
 description = "Meeting recordings -> transcripts -> structured documents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,8 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
-    "pywebview>=5.0",
+    "comtypes>=1.4",       # WebView2 native window (Windows)
+    "certifi",             # bundled CA roots so cloud LLMs work on clean machines
 ]
 
 [project.optional-dependencies]

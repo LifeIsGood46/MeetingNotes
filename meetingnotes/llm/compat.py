@@ -12,6 +12,7 @@ import os
 import urllib.error
 import urllib.request
 
+from ..net import ssl_context, ssl_error_hint
 from .base import LLMProvider, LLMResponse, LLMError
 
 
@@ -33,7 +34,7 @@ class OpenAICompatProvider(LLMProvider):
         req = urllib.request.Request(f"{self.base_url}{path}", data=data, headers=headers,
                                      method="POST" if payload is not None else "GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
@@ -50,6 +51,9 @@ class OpenAICompatProvider(LLMProvider):
             body = e.read().decode("utf-8", "replace")[:300]
             raise LLMError(f"Request failed ({e.code}): {body}") from e
         except Exception as e:
+            hint = ssl_error_hint(e)
+            if hint:
+                raise LLMError(f"Connection to {self.base_url} failed: {hint}") from e
             raise LLMError(
                 f"Could not reach {self.base_url} — is LM Studio (or your server) running?"
             ) from e

@@ -266,51 +266,53 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .badge-done { background: #143326; color: var(--ok); border-color: #1f4d38; }
 .badge-failed { background: #3a1d1d; color: var(--fail); border-color: #5a2828; }
+.badge-cancelled { background: #33302a; color: #d6c08a; border-color: #55492e; }
 .badge-staged { background: #2b2740; color: #c4b2f2; border-color: #453d6e; }
 
 /* job status accents */
 .job[data-status="running"] { border-left: 3px solid var(--accent); }
 .job[data-status="done"] { border-left: 3px solid var(--ok); }
 .job[data-status="failed"] { border-left: 3px solid var(--fail); }
+.job[data-status="cancelled"] { border-left: 3px solid #d6c08a; }
 .job[data-status="staged"] { border-left: 3px solid var(--violet); }
 
 /* large modal (settings) */
 .modal-large { max-width: 760px; max-height: 88vh; overflow-y: auto; }
 
-/* first-launch onboarding */
-.onboard-overlay {
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(5, 7, 12, 0.82);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  padding: 1rem;
+/* interactive setup wizard: coach-marks over the real UI.
+   Spotlight = four shade rectangles around the target (no z-index fights).
+   Outline + tip live outside .wizard-root so they can float above the
+   Settings modal while the wizard targets a control inside it. */
+.wizard-root { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+.wizard-shade {
+  position: absolute;
+  background: rgba(5, 7, 12, 0.74);
+  pointer-events: auto;
 }
-.onboard-card {
+.wizard-outline {
+  position: fixed; z-index: 80; pointer-events: none;
+  border: 2px solid var(--violet);
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 5px rgba(139, 92, 246, 0.28), 0 0 28px rgba(139, 92, 246, 0.45);
+}
+.wizard-tip {
+  position: fixed; z-index: 81;
+  max-width: 380px;
   background: linear-gradient(180deg, #1b2240, var(--card));
   border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  box-shadow: var(--shadow-pop);
-  max-width: 560px; width: 100%;
-  max-height: 90vh; overflow-y: auto;
-  padding: 1.8rem 2rem 1.4rem;
-  text-align: center;
-}
-.onboard-slide h2 { margin: 0 0 0.5rem; font-size: 1.3rem; }
-.onboard-slide p { color: var(--muted); line-height: 1.55; margin: 0 0 0.9rem; }
-.onboard-slide p code, .onboard-slide b { color: var(--text); }
-.guide-shot {
-  width: 100%;
   border-radius: var(--r-md);
-  border: 1px solid var(--border);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
-  background: #0d1119;
-  min-height: 120px;
+  box-shadow: var(--shadow-pop);
+  padding: 1rem 1.15rem;
 }
-.onboard-dots { display: flex; gap: 0.45rem; justify-content: center; margin: 1.1rem 0 1rem; }
-.onboard-dots span { width: 8px; height: 8px; border-radius: 999px; background: var(--border); }
-.onboard-dots span.on { background: var(--grad); box-shadow: 0 0 8px rgba(139,92,246,0.6); }
-.onboard-actions { display: flex; justify-content: space-between; align-items: center; }
-.onboard-nav { display: flex; gap: 0.6rem; }
+.wizard-tip strong { display: block; margin-bottom: 0.4rem; }
+.wizard-tip p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.wizard-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; }
+.wizard-nav { display: flex; gap: 0.5rem; }
+/* while the wizard points inside Settings, that modal floats above the shade
+   so it stays bright and clickable; outline + tip are higher still */
+body.wizard-settings #settings-overlay { z-index: 75; }
+.help-type { margin: 0.25rem 0; }
+.help-type code { min-width: 74px; display: inline-block; }
 
 /* staged job controls */
 .staged-controls { display: flex; flex-wrap: wrap; gap: 0.8rem; margin: 0.5rem 0; }
@@ -339,8 +341,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 /* in-page modal (replaces native dialogs, which leak the origin in app windows) */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(5, 7, 12, 0.7);
-  backdrop-filter: blur(3px);
+  /* No backdrop-filter: on VMs with software rendering it stalls compositing
+     and the dialog appears only after a stray repaint (clicks "do nothing"
+     until you click elsewhere). A plain tint is cheap and identical enough. */
+  background: rgba(5, 7, 12, 0.78);
   display: flex; align-items: center; justify-content: center;
   padding: 1rem;
 }

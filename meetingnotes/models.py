@@ -252,13 +252,20 @@ def download_model(
     return dl
 
 
-def ensure_downloaded(size: str, progress_cb: Callable[..., None] | None = None) -> None:
+def ensure_downloaded(
+    size: str,
+    progress_cb: Callable[..., None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> None:
     """Block until the model snapshot exists locally, with progress messages.
 
     Used by the pipeline so a first-ever run downloads visibly (with % updates
     and an ETA line) instead of faster-whisper doing it silently inside the
-    "Transcribing" stage. Raises RuntimeError with a clear message on failure.
+    "Transcribing" stage. Raises RuntimeError with a clear message on failure;
+    raises CancelledError when should_cancel() turns true mid-download.
     """
+    from .errors import CancelledError
+
     if is_model_downloaded(size):
         return
     import time
@@ -270,8 +277,12 @@ def ensure_downloaded(size: str, progress_cb: Callable[..., None] | None = None)
     dl = download_model(size)
     last_line, last_emit, t0 = "", 0.0, time.time()
     while dl.status == "downloading":
+        if should_cancel and should_cancel():
+            raise CancelledError("cancelled by user")
         dl._thread.join(timeout=2.0)  # noqa: SLF001
-        if time.time() - last_emit > 15 and dl.total_bytes > 0:
+        # Skip metadata-sized files (each file has its own tqdm total, so a
+        # 2 KB config would otherwise report "86% (0.0/0 MB, ETA ~0s)").
+        if time.time() - last_emit > 15 and dl.total_bytes > 10_000_000:
             frac = dl.downloaded_bytes / dl.total_bytes
             pct = 100 * frac
             elapsed = time.time() - t0

@@ -7,6 +7,7 @@ import os
 import urllib.error
 import urllib.request
 
+from ..net import ssl_context, ssl_error_hint
 from .base import LLMProvider, LLMResponse, LLMError
 
 API_BASE = "https://api.anthropic.com/v1"
@@ -33,7 +34,7 @@ class AnthropicProvider(LLMProvider):
         req = urllib.request.Request(f"{API_BASE}{path}", data=data, headers=self._headers(),
                                      method="POST" if payload is not None else "GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
@@ -53,6 +54,9 @@ class AnthropicProvider(LLMProvider):
         except LLMError:
             raise
         except Exception as e:
+            hint = ssl_error_hint(e)
+            if hint:
+                raise LLMError(f"Anthropic connection failed: {hint}") from e
             raise LLMError(f"Could not reach Anthropic: {e}. Check connection.") from e
 
     def list_models(self) -> list[str]:

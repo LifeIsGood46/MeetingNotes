@@ -10,6 +10,7 @@ from typing import Callable
 
 from .audio import extract_audio, chunk_audio, probe_duration
 from . import config
+from .errors import CancelledError
 from .profiles import Profile, load_profile
 from .transcribe import transcribe, TranscriptionResult
 from .correct import apply_corrections, correct_segments
@@ -94,16 +95,22 @@ def run_pipeline(
     out_dir: Path,
     opts: PipelineOptions,
     progress_cb: Callable[..., None] | None = None,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> PipelineResult:
     """Run the full processing pipeline for one source file.
 
     Stages run conditionally based on ``opts.task``: ``raw`` stops after
     glossary correction; anything beyond that requires an LLM provider.
+    ``cancel_cb`` is polled between stages and inside the transcribe loop;
+    when it returns True the run aborts with CancelledError.
 
     Overall progress fractions (for determinate progress bars):
     extract 0–0.05, model download 0.05–0.15, transcribe 0.15–0.85,
     correct 0.87, LLM 0.90, done 1.0.
     """
+    def cancelled() -> bool:
+        return bool(cancel_cb and cancel_cb())
+
     t0 = time.time()
     source = Path(source)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +120,8 @@ def run_pipeline(
     _log(progress_cb, f"Profile: {profile.name} — {profile.description}")
 
     # --- Stage 1: audio extraction / preprocessing -------------------------
+    if cancelled():
+        raise CancelledError("cancelled by user")
     wav_path = work_dir / f"{source.stem}.wav"
     _log(progress_cb, f"[1/4] Extracting + normalizing audio -> {wav_path.name}", 0.01)
     prep = extract_audio(source, wav_path, normalize=opts.normalize_audio)
@@ -124,8 +133,15 @@ def run_pipeline(
 
     model_size = opts.model_size or config.DEFAULT_MODEL_SIZE
     if model_size in KNOWN_MODELS:
-        ensure_downloaded(model_size, lambda msg, frac=None: _log(
-            progress_cb, msg, None if frac is None else 0.05 + 0.10 * frac))
+        ensure_downloaded(
+            model_size,
+            lambda msg, frac=None: _log(
+                progress_cb, msg, None if frac is None else 0.05 + 0.10 * frac),
+            should_cancel=cancelled,
+        )
+
+    if cancelled():
+        raise CancelledError("cancelled by user")
 
     # --- Stage 2: transcription (chunked if long) --------------------------
     _log(progress_cb, "[2/4] Transcribing", 0.15)
@@ -141,6 +157,8 @@ def run_pipeline(
     audio_done = 0.0
     transcribe_t0 = time.time()
     for i, chunk_path in enumerate(chunks):
+        if cancelled():
+            raise CancelledError("cancelled by user")
         offset = i * opts.chunk_length_s if len(chunks) > 1 else 0.0
         res: TranscriptionResult = transcribe(
             chunk_path,
@@ -158,9 +176,13 @@ def run_pipeline(
                 "audio_done": audio_done,
                 "stage_started": transcribe_t0,
             },
+            should_cancel=cancelled,
         )
         audio_done += probe_duration(chunk_path)
         all_segments.extend(res.as_dicts())
+
+    if cancelled():
+        raise CancelledError("cancelled by user")
 
     # --- Stage 3: glossary correction --------------------------------------
     _log(progress_cb, "[3/4] Applying glossary corrections", 0.87)
@@ -181,6 +203,8 @@ def run_pipeline(
     document = ""
     needs_llm = opts.task not in ("raw",)
     if needs_llm:
+        if cancelled():
+            raise CancelledError("cancelled by user")
         llm: LLMProvider = _resolve_llm(opts)
         _log(progress_cb, f"[4/4] LLM stage: provider={llm.provider_name} model={llm.model} task={opts.task}", 0.90)
         cleaned = polish.clean_transcript(transcript_corrected, llm)

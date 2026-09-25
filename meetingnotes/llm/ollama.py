@@ -7,6 +7,7 @@ import os
 import urllib.error
 import urllib.request
 
+from ..net import ssl_context, ssl_error_hint
 from .base import LLMProvider, LLMResponse, LLMError
 
 
@@ -33,7 +34,7 @@ class OllamaProvider(LLMProvider):
         req = urllib.request.Request(f"{self.host}{path}", data=data, headers=headers,
                                      method="POST" if payload is not None else "GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
@@ -51,6 +52,9 @@ class OllamaProvider(LLMProvider):
             body = e.read().decode("utf-8", "replace")[:300]
             raise LLMError(f"Ollama request failed ({e.code}): {body}", http_code=e.code) from e
         except Exception as e:
+            hint = ssl_error_hint(e)
+            if hint:
+                raise LLMError(f"Ollama connection failed: {hint}") from e
             hint = "Is `ollama serve` running?" if not self._is_cloud else "Check host/key."
             raise LLMError(f"Ollama request failed ({e}). {hint}") from e
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import config
+from .errors import CancelledError
 from .profiles import Profile
 
 
@@ -114,8 +115,14 @@ def unload_models(model_size: str | None = None) -> int:
     return len(keys)
 
 
-def _get_model(model_size: str, device: str, compute_type: str):
-    """Load (and cache) a faster-whisper model, lazily importing the dep."""
+def _get_model(model_size: str, device: str, compute_type: str,
+               on_fallback=None):
+    """Load (and cache) a faster-whisper model, lazily importing the dep.
+
+    A CUDA load that fails (no NVIDIA GPU, driver mismatch, DLL trouble)
+    falls back to CPU + int8 instead of dying — the job just runs slower.
+    ``on_fallback(reason)`` is invoked (if given) so callers can log it.
+    """
     key = (model_size, device, compute_type)
     if key in _MODEL_CACHE:
         return _MODEL_CACHE[key]
@@ -129,8 +136,21 @@ def _get_model(model_size: str, device: str, compute_type: str):
         ) from e
 
     print(f"Loading model {model_size} ({device}, {compute_type}) ...", flush=True)
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
-    _MODEL_CACHE[key] = model
+    try:
+        model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    except Exception as e:
+        if device == "cuda":
+            reason = (f"CUDA unavailable ({type(e).__name__}: {e}). "
+                      "Falling back to CPU (int8) — transcription will be slower.")
+            if on_fallback:
+                on_fallback(reason)
+            else:
+                print(reason, flush=True)
+            device, compute_type = "cpu", "int8"
+            model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        else:
+            raise
+    _MODEL_CACHE[(model_size, device, compute_type)] = model
     return model
 
 
@@ -145,6 +165,7 @@ def transcribe(
     time_offset: float = 0.0,
     progress_cb: Callable[..., None] | None = None,
     progress_meta: dict | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> TranscriptionResult:
     """Transcribe an audio file with the given profile.
 
@@ -160,7 +181,8 @@ def transcribe(
     log = progress_cb or (lambda _msg, _frac=None: None)
 
     def _do_transcribe(dev: str, comp: str):
-        model = _get_model(model_size, dev, comp)
+        model = _get_model(model_size, dev, comp,
+                          on_fallback=lambda reason: log(reason))
         log(f"Transcribing {audio_path.name} [{dev}/{comp}]")
         start = time.time()
         segments_iter, info = model.transcribe(
@@ -182,6 +204,8 @@ def transcribe(
         result = TranscriptionResult(language=language)
         last_log = time.time()
         for seg in segments_iter:
+            if should_cancel and should_cancel():
+                raise CancelledError("cancelled by user")
             result.segments.append(
                 Segment(
                     start=seg.start + time_offset,

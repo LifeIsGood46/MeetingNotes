@@ -29,6 +29,9 @@
       <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor">
         <path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.2-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5Z"/>
       </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6.5" y="6.5" width="11" height="11" rx="2"/>
+      </symbol>
       <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6.5 7l1 12a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4l1-12"/>
       </symbol>
@@ -55,6 +58,9 @@
     <aside class="rail" aria-label="App controls">
       <img class="rail-logo" src="/static/logo.png" alt="MeetingNotes logo" title="MeetingNotes" />
       <div class="rail-spacer"></div>
+      <button id="help-btn" class="icon-btn" title="Help" aria-label="Help">
+        <svg class="ic" width="20" height="20"><use href="#i-help"/></svg>
+      </button>
       <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">
         <svg class="ic" width="20" height="20"><use href="#i-settings"/></svg>
       </button>
@@ -93,6 +99,7 @@
           <p class="muted">Your transcripts will land here.</p>
           <div class="hello-actions">
             <button class="btn" id="hello-add-btn"><svg class="ic ic-sm" width="15" height="15"><use href="#i-upload"/></svg> Add a recording</button>
+            <button class="btn btn-ghost" id="hello-sample-btn" title="Stages a short built-in recording so you can try the app"><svg class="ic ic-sm" width="15" height="15"><use href="#i-play"/></svg> Try with a sample</button>
           </div>
         </section>
 
@@ -111,7 +118,7 @@
   <div class="modal-overlay" id="settings-overlay" hidden>
     <div class="modal modal-large" role="dialog" aria-modal="true" aria-label="Settings">
       <h3 class="modal-title"><svg class="ic ic-sm" width="15" height="15"><use href="#i-settings"/></svg> Settings</h3>
-      <div class="card">
+      <div class="card" id="card-model">
         <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-mic"/></svg> Transcription model</h2>
         <div class="settings-grid">
           <label class="ctl">
@@ -121,7 +128,8 @@
           <label class="ctl">
             <span class="muted">Device</span>
             <select id="model-device">
-              <option value="cuda">cuda</option>
+              <option value="cuda">cuda (NVIDIA GPU)</option>
+              <option value="cpu">cpu (no GPU needed)</option>
             </select>
           </label>
           <label class="ctl">
@@ -148,9 +156,10 @@
           <div class="progress-fill" id="model-progress-fill"></div>
         </div>
         <div class="muted small" id="model-progress-text"></div>
+        <div class="muted small" id="ffmpeg-status" title="Audio extraction tool"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="card-llm">
         <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-doc"/></svg> LLM (for formatted output)</h2>
         <div class="settings-grid">
           <label class="ctl">
@@ -214,11 +223,11 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="card-output">
         <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-folder"/></svg> Output</h2>
         <div class="settings-grid">
           <label class="ctl">
-            <span class="muted">Transcription language</span>
+            <span class="muted">Audio language <span class="muted small">(the language spoken in your recordings — it guides the model; auto-detect works too)</span></span>
             <select id="language"></select>
           </label>
           <label class="ctl">
@@ -239,13 +248,10 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-help"/></svg> Folders &amp; guide</h2>
-        <p class="muted small folders-text">Portable layout — everything lives beside the app, delete the folder and it&rsquo;s gone. Whisper models land in <code>models/</code>. Each finished job gets its own <code>results/&lt;name&gt;/</code> folder (<code>.raw.txt</code> raw transcript, <code>.txt</code> corrected, <code>.json</code> segments, <code>.md</code> LLM doc). Uploads and temp chunks live in <code>data/work/</code>.</p>
+      <div class="card" id="folders-card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-help"/></svg> Folders</h2>
+        <p class="muted small folders-text">Whisper models in <code>models/</code>; each finished job gets its own <code>results/&lt;name&gt;/</code> folder. Uploads and temp chunks live in <code>data/work/</code>. Full details in Help.</p>
         <p class="muted small folders-paths" id="folders-paths"></p>
-        <div class="model-actions">
-          <button class="btn btn-ghost btn-small" id="replay-guide-btn"><svg class="ic ic-sm" width="15" height="15"><use href="#i-help"/></svg> Replay introduction</button>
-        </div>
       </div>
 
       <div class="modal-actions">
@@ -256,39 +262,53 @@
     </div>
   </div>
 
-  <!-- first-launch guide: 4 short slides, each with a real screenshot -->
-  <div class="onboard-overlay" id="onboard-overlay" hidden>
-    <div class="onboard-card" role="dialog" aria-modal="true" aria-label="Getting started">
-      <div class="onboard-slides">
-        <section class="onboard-slide">
-          <h2>MeetingNotes turns recordings into documents</h2>
-          <p>Drop in a meeting video, get back a transcript, notes, actions or a test plan — all on your own machine.</p>
-          <img class="guide-shot" src="/static/guide/slide-1.png" alt="App window with upload pane and hello panel" />
-        </section>
-        <section class="onboard-slide" hidden>
-          <h2>It works in four passes</h2>
-          <p>Extract audio, transcribe with Whisper, fix domain terms, then polish with an LLM. Each file is a card you can track.</p>
-          <img class="guide-shot" src="/static/guide/slide-2.png" alt="Job card with profile, output and Start button" />
-        </section>
-        <section class="onboard-slide" hidden>
-          <h2>Get set up in three steps</h2>
-          <p>1. Settings &rarr; download a model. 2. Drop a recording, pick a profile, press Start. 3. Add an LLM key only if you want formatted docs.</p>
-          <img class="guide-shot" src="/static/guide/slide-3.png" alt="Settings transcription model with Download button" />
-        </section>
-        <section class="onboard-slide" hidden>
-          <h2>Where everything lives</h2>
-          <p>Models in <code>models/</code>, finished docs in <code>results/&lt;name&gt;/</code>, app state in <code>data/</code>, temp uploads in <code>data/work/</code>. Delete the app folder and it&rsquo;s all gone.</p>
-          <img class="guide-shot" src="/static/guide/slide-4.png" alt="Results folder with transcript and document files" />
-        </section>
+  <!-- help overlay: guide replay, folders, output types -->
+  <div class="modal-overlay" id="help-overlay" hidden>
+    <div class="modal modal-large" role="dialog" aria-modal="true" aria-label="Help">
+      <h3 class="modal-title"><svg class="ic ic-sm" width="15" height="15"><use href="#i-help"/></svg> Help</h3>
+      <div class="card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-play"/></svg> Tutorial</h2>
+        <p class="muted small folders-text">The setup walkthrough opens on first launch and lives here afterwards — it walks through downloading a model, adding a recording and running it.</p>
+        <div class="model-actions">
+          <button class="btn btn-ghost btn-small" id="help-guide-btn"><svg class="ic ic-sm" width="15" height="15"><use href="#i-play"/></svg> Open the walkthrough</button>
+        </div>
       </div>
-      <div class="onboard-dots" id="onboard-dots"></div>
-      <div class="onboard-actions">
-        <button class="btn btn-ghost btn-small" id="onboard-skip">Skip introduction</button>
-        <span class="onboard-nav">
-          <button class="btn btn-ghost btn-small" id="onboard-back">Back</button>
-          <button class="btn btn-small" id="onboard-next">Next</button>
-        </span>
+      <div class="card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-folder"/></svg> Where everything lives</h2>
+        <p class="muted small folders-text">Portable layout — everything lives beside the app, delete the folder and it&rsquo;s gone. Whisper models land in <code>models/</code>. Each finished job gets its own <code>results/&lt;name&gt;/</code> folder (<code>.raw.txt</code> raw transcript, <code>.txt</code> corrected, <code>.json</code> segments, <code>.md</code> LLM doc). Uploads and temp chunks live in <code>data/work/</code>.</p>
+        <p class="muted small folders-paths" id="help-folders-paths"></p>
       </div>
+      <div class="card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-doc"/></svg> Output types</h2>
+        <div class="muted small folders-text" id="help-output-types"></div>
+      </div>
+      <div class="card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-power"/></svg> Quitting</h2>
+        <p class="muted small folders-text" id="help-quit-text">Close the app window to stop everything. If the app fell back to a browser tab, use the Quit button in the left rail — closing just the tab leaves the app running.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-small" id="help-close-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- interactive setup wizard: coach-marks over the real UI -->
+  <div class="wizard-root" id="wizard-root" hidden>
+    <div class="wizard-shade" id="wiz-shade-top"></div>
+    <div class="wizard-shade" id="wiz-shade-left"></div>
+    <div class="wizard-shade" id="wiz-shade-right"></div>
+    <div class="wizard-shade" id="wiz-shade-bottom"></div>
+  </div>
+  <div class="wizard-outline" id="wiz-outline" hidden></div>
+  <div class="wizard-tip" id="wizard-tip" role="dialog" aria-modal="false" aria-label="Setup walkthrough" hidden>
+    <strong id="wizard-title">Setup</strong>
+    <p id="wizard-text"></p>
+    <div class="wizard-actions">
+      <button class="btn btn-ghost btn-small" id="wizard-skip">Skip setup</button>
+      <span class="wizard-nav">
+        <button class="btn btn-ghost btn-small" id="wizard-back" hidden>Back</button>
+        <button class="btn btn-small" id="wizard-next">Next</button>
+      </span>
     </div>
   </div>
 

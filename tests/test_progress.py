@@ -100,3 +100,51 @@ def test_resolve_task_raw_clean_custom_rules():
     assert _resolve_task("clean", "anything")[0] == "clean"
     assert _resolve_task("custom", "")[0] == "clean"
     assert _resolve_task("custom", "do X")[0] == "custom"
+
+
+def test_get_model_cuda_failure_falls_back_to_cpu(monkeypatch):
+    """A CUDA load error must switch to CPU + int8, not kill the job."""
+    from meetingnotes import transcribe as tr
+
+    calls = []
+
+    class FakeWhisperModel:
+        def __init__(self, size, device, compute_type):
+            calls.append((device, compute_type))
+            if device == "cuda":
+                raise RuntimeError("Library cublas64_12.dll is not found")
+
+    import sys
+    import types
+
+    fake_mod = types.ModuleType("faster_whisper")
+    fake_mod.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_mod)
+    monkeypatch.setattr(tr, "_MODEL_CACHE", {})
+
+    reasons = []
+    model = tr._get_model("tiny", "cuda", "float16", on_fallback=reasons.append)
+    assert isinstance(model, FakeWhisperModel)
+    assert calls == [("cuda", "float16"), ("cpu", "int8")]
+    assert reasons and "CPU" in reasons[0]
+
+
+def test_get_model_cpu_failure_still_raises(monkeypatch):
+    from meetingnotes import transcribe as tr
+
+    class FakeWhisperModel:
+        def __init__(self, size, device, compute_type):
+            raise RuntimeError("boom")
+
+    import sys
+    import types
+
+    fake_mod = types.ModuleType("faster_whisper")
+    fake_mod.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_mod)
+    monkeypatch.setattr(tr, "_MODEL_CACHE", {})
+
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        tr._get_model("tiny", "cpu", "int8")

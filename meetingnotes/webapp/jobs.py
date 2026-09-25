@@ -29,9 +29,11 @@ class Job:
     profile: str = "generic"
     task: str = "raw"               # raw | clean | notes | actions | testplan | summary | custom
     custom_prompt: str = ""
-    status: str = "queued"          # queued | running | done | failed
+    status: str = "queued"          # queued | running | done | failed | cancelled
     stage: str = "queued"
     fraction: float | None = None   # 0..1 overall progress (None = unknown)
+    model_size: str = ""            # per-job override; blank = profile/settings
+    language: str = ""              # per-job override; blank = settings
     progress_log: list[str] = field(default_factory=list)
     outputs: dict[str, str] = field(default_factory=dict)
     out_dir: str = ""               # where final artifacts were saved on disk
@@ -42,6 +44,7 @@ class Job:
 class JobQueue:
     def __init__(self):
         self._jobs: dict[str, Job] = {}
+        self._cancels: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
         self._load()
 
@@ -109,25 +112,50 @@ class JobQueue:
     def remove(self, job_id: str) -> None:
         with self._lock:
             self._jobs.pop(job_id, None)
+            self._cancels.pop(job_id, None)
             self._save()
 
     def retry(self, job_id: str):
-        """Reset a failed job to staged so it can start again.
+        """Reset a failed/cancelled job to staged so it can start again.
 
         Profile/task/prompt are kept; error, stage and stale outputs are
-        cleared. Returns the job, or None when it isn't failed.
+        cleared. Returns the job, or None when it isn't retryable.
         """
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job or job.status != "failed":
+            if not job or job.status not in ("failed", "cancelled"):
                 return None
             job.status = "staged"
             job.stage = ""
             job.error = ""
             job.outputs = {}
             job.out_dir = ""
+            job.fraction = None
             self._save()
             return job
+
+    # ---------------- cancellation ----------------
+
+    def request_cancel(self, job_id: str) -> bool:
+        """Signal a queued/running job to stop. Returns False if not cancellable.
+
+        Set-only (never cleared except on start/retry), so a cancel that
+        lands between enqueue and the worker picking the job up still wins.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.status not in ("queued", "running"):
+                return False
+            self._cancels.setdefault(job_id, threading.Event()).set()
+            return True
+
+    def cancel_event(self, job_id: str) -> threading.Event | None:
+        with self._lock:
+            return self._cancels.get(job_id)
+
+    def clear_cancel(self, job_id: str) -> None:
+        with self._lock:
+            self._cancels.pop(job_id, None)
 
     # ---------------- clearing ----------------
 

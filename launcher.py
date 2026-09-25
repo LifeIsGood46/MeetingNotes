@@ -83,40 +83,43 @@ def _wait_ready(url: str, timeout: float = 15.0) -> None:
 
 
 # ---------------------------------------------------------------------------
-# window strategies: native webview -> edge app-mode -> system browser
+# window strategies: WebView2 native window -> edge app-mode -> browser
 # ---------------------------------------------------------------------------
 
 
-def _open_webview_window(url: str, server_stopper) -> bool:
-    """Open a native window via pywebview. Returns False if unavailable."""
-    try:
-        import webview  # pywebview
-        # Import the Windows backend explicitly so PyInstaller bundles it
-        # (webview picks the backend at runtime; static analysis misses it).
-        import webview.platforms.edgechromium  # noqa: F401
+def _icon_path() -> Path | None:
+    """Window/taskbar icon: bundled copy when frozen, project file in dev."""
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        p = base / "assets" / "logo.ico"
+        if p.is_file():
+            return p
+        p2 = Path(sys.executable).parent / "_internal" / "assets" / "logo.ico"
+        return p2 if p2.is_file() else None
+    p = Path(__file__).resolve().parent / "assets" / "logo.ico"
+    return p if p.is_file() else None
 
+
+def _open_native_window(url: str, server_stopper) -> bool:
+    """Real desktop window via WebView2 (no .NET). False if unavailable."""
+    try:
+        from meetingnotes.webview2win import open_webview2_window, webview2_available
+
+        if not webview2_available():
+            _log("window: WebView2 runtime not detected")
+            return False
         _wait_ready(url)
-        window = webview.create_window(
-            "MeetingNotes",
-            url,
-            width=1180,
-            height=800,
-            min_size=(900, 600),
-        )
-        # pywebview event API: fires when the user closes the window.
-        window.events.closed += lambda: setattr(server_stopper, "should_exit", True)
-        # Log BEFORE start(): it blocks the thread until the window closes.
-        _log("window: native webview")
-        webview.start()
+        icon = _icon_path()
+        _log("window: WebView2 native")
+        open_webview2_window(url, "MeetingNotes", 1180, 800, icon_ico=icon)
         return True
-    except Exception as e:
-        # Log the real reason the native window failed (frozen exe has no console).
+    except Exception:
         try:
             import traceback
 
             LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with LOG_PATH.open("a", encoding="utf-8") as f:
-                f.write(f"\n=== webview failed {time.strftime('%H:%M:%S')} ===\n"
+                f.write(f"\n=== webview2 failed {time.strftime('%H:%M:%S')} ===\n"
                         f"{traceback.format_exc()}\n")
         except Exception:
             pass
@@ -136,20 +139,40 @@ def _edge_path() -> str | None:
     return None
 
 
-def _open_edge_app_window(url: str) -> bool:
-    """Chromeless Edge window (no tabs/URL bar). Returns False if Edge missing."""
+def _open_edge_app_window(url: str):
+    """Chromeless Edge window (no tabs/URL bar). Returns the Popen or None."""
     edge = _edge_path()
     if not edge:
-        return False
+        return None
     # --user-data-dir: isolated profile so the window is standalone, not
     # the user's browsing session; --app gives the chromeless frame.
     profile = config.APP_DIR / "edge-profile"
-    subprocess.Popen(
+    return subprocess.Popen(
         [edge, f"--app={url}", f"--user-data-dir={profile}", "--window-size=1180,800"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    return True
+
+
+def _wait_for_edge_and_shutdown(proc, server) -> None:
+    """Block until the Edge app window process exits, then stop the server.
+
+    Closing the window ends the process (isolated profile), which is our
+    only close signal in this mode — without it the app would linger as a
+    zombie background process.
+    """
+    try:
+        proc.wait()
+    except Exception:
+        pass
+    server.should_exit = True
+
+
+def _focus_existing(url: str) -> None:
+    """Another instance is running: open a window onto it, don't start one."""
+    _wait_ready(url)
+    if _open_edge_app_window(url) is None:
+        webbrowser.open(url)
 
 
 def run(host: str = HOST, port: int = PORT) -> int:
@@ -159,16 +182,12 @@ def run(host: str = HOST, port: int = PORT) -> int:
     # If an instance is already up, focus it instead of starting a second copy.
     if _instance_running(url):
         if not no_window:
-            _wait_ready(url)
-            if not _open_edge_app_window(url):
-                webbrowser.open(url)
+            _focus_existing(url)
         return 0
 
     if not _acquire_lock():
         if not no_window:
-            _wait_ready(url)
-            if not _open_edge_app_window(url):
-                webbrowser.open(url)
+            _focus_existing(url)
         return 0
 
     try:
@@ -185,17 +204,20 @@ def run(host: str = HOST, port: int = PORT) -> int:
             server_thread.join()
         else:
             _wait_ready(url)
-            # 1st choice: native window. 2nd: chromeless Edge. 3rd: browser.
-            if not _open_webview_window(url, server):
-                if not _open_edge_app_window(url):
-                    _log("window: system-browser fallback (webview + edge-app unavailable)")
+            # 1st choice: WebView2 native window. 2nd: chromeless Edge.
+            # 3rd: system browser.
+            if not _open_native_window(url, server):
+                edge_proc = _open_edge_app_window(url)
+                if edge_proc is None:
+                    _log("window: system-browser fallback (WebView2 + edge-app unavailable)")
                     webbrowser.open(url)
                 else:
-                    _log("window: edge app-mode fallback (native webview unavailable — see earlier lines)")
-                # Keep serving until the user quits from the UI.
+                    _log("window: edge app-mode fallback")
+                    # The Edge window's process ends when the user closes it;
+                    # that's our signal to stop the server (no zombie).
+                    _wait_for_edge_and_shutdown(edge_proc, server)
                 server_thread.join()
             else:
-                _log("window: native webview")
                 # Native window closed by the user -> stop the server, then
                 # exit hard. Graceful interpreter shutdown hangs ~30s on CUDA
                 # teardown / stray non-daemon threads; state (jobs.json,

@@ -20,7 +20,8 @@ _DEFAULTS = {
     "default_profile": "generic",
     "default_task": "raw",
     "output_dir": "",
-    "onboarded": False,   # first-launch guide seen
+    "onboarded": False,   # first-launch guide seen (legacy slides)
+    "wizard_done": False, # interactive setup wizard completed/skipped
     "llm": {
         "provider": "none",
         "model": "",
@@ -57,7 +58,8 @@ class AppSettings:
     default_profile: str = "generic"
     default_task: str = "raw"
     output_dir: str = ""                  # blank = Downloads\meetingnotes
-    onboarded: bool = False             # first-launch guide seen
+    onboarded: bool = False             # first-launch guide seen (legacy slides)
+    wizard_done: bool = False           # interactive setup wizard completed
     llm: LLMSettings = field(default_factory=LLMSettings)
 
     # -- public export (never exposes raw secrets) --------------------------
@@ -97,6 +99,9 @@ def load_settings() -> AppSettings:
                 scalars["onboarded"] = True
         except (OSError, ValueError):
             pass
+    if "wizard_done" not in raw and scalars.get("onboarded"):
+        # Users who saw the old slide guide are not re-nagged by the wizard.
+        scalars["wizard_done"] = True
     return AppSettings(llm=llm, **scalars)
 
 

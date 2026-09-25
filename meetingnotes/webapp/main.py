@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from meetingnotes import config
 from meetingnotes import __version__
 from meetingnotes import models as model_mgr
+from meetingnotes.errors import CancelledError
 from meetingnotes.pipeline import PipelineOptions, run_pipeline
 from meetingnotes.polish import available_tasks, task_default_prompts
 from meetingnotes.profiles import list_profiles
@@ -166,6 +167,16 @@ def _enqueue(job: Job, source: Path) -> None:
 
 
 def _run_job(job: Job, source: Path) -> None:
+    # A cancel may have arrived while the job sat in the queue.
+    cancel_ev = job_queue.cancel_event(job.id)
+    if cancel_ev is not None and cancel_ev.is_set():
+        job_queue.set_status(job, "cancelled")
+        job_queue.log(job, "Cancelled.")
+        job_queue.clear_cancel(job.id)
+        job_queue.persist()
+        _publish("job", {"id": job.id, "status": "cancelled"})
+        return
+
     job_queue.set_status(job, "running")
     _publish("job", {"id": job.id, "status": "running"})
 
@@ -174,10 +185,22 @@ def _run_job(job: Job, source: Path) -> None:
         _publish("job", {"id": job.id, "status": job.status, "stage": msg,
                          "fraction": fraction})
 
+    def cancelled() -> bool:
+        ev = job_queue.cancel_event(job.id)
+        return bool(ev is not None and ev.is_set())
+
+    job_dir: Path | None = None
+
+    def discard_empty_dir() -> None:
+        try:
+            if job_dir is not None and job_dir.is_dir() and not any(job_dir.iterdir()):
+                job_dir.rmdir()
+        except OSError:
+            pass
+
     try:
         settings = load_settings()
         task, prompt = _resolve_task(job.task, job.custom_prompt.strip())
-        job_dir: Path | None = None
 
         # Fail fast on bad LLM credentials before transcription burns minutes.
         if task != "raw":
@@ -193,16 +216,23 @@ def _run_job(job: Job, source: Path) -> None:
             raise RuntimeError(
                 f"Cannot create output folder: {out_root}. Check Settings → Save folder."
             )
+        # Per-job model wins; then the profile's preset; then settings.
+        from meetingnotes.profiles import load_profile
+
+        effective_language = job.language or settings.language
+        prof = load_profile(job.profile, language=effective_language)
+        model_size = job.model_size or prof.model or settings.model_size
         opts = PipelineOptions(
             profile=job.profile, task=task, custom_prompt=prompt,
             output_name=job.task if job.task != "raw" else None,
-            model_size=settings.model_size, device=settings.device,
-            compute_type=settings.compute_type, language=settings.language,
+            model_size=model_size, device=settings.device,
+            compute_type=settings.compute_type,
+            language=effective_language,
         )
         job_dir = _unique_job_dir(out_root, job.filename)
         result = run_pipeline(
             source, config.WORK_DIR / job.id, job_dir,
-            opts, progress_cb=progress,
+            opts, progress_cb=progress, cancel_cb=cancelled,
         )
         mark_output_dir(job_dir)
         job.outputs = {name: str(p) for name, p in result.outputs.items()}
@@ -211,13 +241,16 @@ def _run_job(job: Job, source: Path) -> None:
         job_queue.persist()
         _publish("job", {"id": job.id, "status": "done",
                          "outputs": job.outputs, "out_dir": job.out_dir})
+    except CancelledError:
+        discard_empty_dir()
+        job_queue.set_status(job, "cancelled")
+        job_queue.log(job, "Cancelled.")
+        job_queue.clear_cancel(job.id)
+        job_queue.persist()
+        _publish("job", {"id": job.id, "status": "cancelled"})
     except Exception as e:
         # Don't litter the save folder with empty dirs from failed runs.
-        try:
-            if job_dir is not None and job_dir.is_dir() and not any(job_dir.iterdir()):
-                job_dir.rmdir()
-        except OSError:
-            pass
+        discard_empty_dir()
         job_queue.set_status(job, "failed", error=str(e))
         job_queue.log(job, "Failed.")
         job_queue.persist()
@@ -327,6 +360,12 @@ def create_app() -> FastAPI:
     @app.get("/api/version")
     def version():
         return {"version": __version__, "started_at": _started_at}
+
+    @app.get("/api/ffmpeg")
+    def ffmpeg():
+        from meetingnotes import ffbin
+
+        return ffbin.ffmpeg_status()
 
     # ------------------------------ settings -------------------------------
 
@@ -447,9 +486,19 @@ def create_app() -> FastAPI:
     @app.get("/api/profiles")
     def get_profiles():
         return {
-            "profiles": [{"name": p.name, "description": p.description} for p in list_profiles()],
+            "profiles": [{"name": p.name, "description": p.description,
+                          "model": p.model} for p in list_profiles()],
             "tasks": ["raw", *available_tasks(), "custom"],
             "task_prompts": task_default_prompts(),
+            "task_descriptions": {
+                "raw": "Plain transcript. No LLM needed.",
+                "clean": "Transcript with punctuation and paragraphs fixed",
+                "notes": "Structured meeting notes with sections",
+                "actions": "Action items only, as a checklist",
+                "testplan": "QA test plan with cases",
+                "summary": "Short summary of the meeting",
+                "custom": "Your own prompt",
+            },
         }
 
     # ------------------------------- jobs ----------------------------------
@@ -473,12 +522,31 @@ def create_app() -> FastAPI:
             created.append({"id": job.id, "filename": job.filename})
         return {"created": created}
 
+    @app.post("/api/jobs/sample")
+    def create_sample_job():
+        """Stage the bundled sample recording as a job (wizard / Try sample)."""
+        src = STATIC_DIR / "sample.mp3"
+        if not src.is_file():
+            raise HTTPException(404, "sample recording missing from this build")
+        settings = load_settings()
+        presets = task_default_prompts()
+        job = job_queue.create("Sample meeting.mp3", profile="generic",
+                               task="raw", custom_prompt=presets.get("raw", ""))
+        job.language = "en"  # the bundled sample is English speech
+        dest = UPLOAD_DIR / job.id / "Sample meeting.mp3"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        job_queue.set_status(job, "staged")
+        job_queue.persist()
+        _publish("job", {"id": job.id, "filename": job.filename, "status": "staged"})
+        return {"created": [{"id": job.id, "filename": job.filename}]}
+
     @app.get("/api/jobs")
     def list_jobs():
         return {"jobs": [
             {"id": j.id, "filename": j.filename, "profile": j.profile, "task": j.task,
              "custom_prompt": j.custom_prompt, "status": j.status, "stage": j.stage,
-             "fraction": j.fraction,
+             "fraction": j.fraction, "model_size": j.model_size, "language": j.language,
              "error": j.error, "outputs": list(j.outputs.keys()), "out_dir": j.out_dir,
              "created_at": j.created_at}
             for j in job_queue.list()
@@ -488,7 +556,8 @@ def create_app() -> FastAPI:
     def job_detail(job_id: str):
         j = _job_or_404(job_id)
         return {"id": j.id, "filename": j.filename, "profile": j.profile, "task": j.task,
-                "status": j.status, "stage": j.stage, "fraction": j.fraction, "error": j.error,
+                "status": j.status, "stage": j.stage, "fraction": j.fraction,
+                "model_size": j.model_size, "language": j.language, "error": j.error,
                 "log": j.progress_log, "outputs": list(j.outputs.keys()),
                 "out_dir": j.out_dir}
 
@@ -500,9 +569,20 @@ def create_app() -> FastAPI:
         src = UPLOAD_DIR / job.id / job.filename
         if not src.is_file():
             raise HTTPException(404, "uploaded file missing")
+        job_queue.clear_cancel(job.id)  # a stale cancel must not kill a new start
         job_queue.set_status(job, "queued")
         _publish("job", {"id": job.id, "status": "queued"})
         _enqueue(job, src)
+        return {"ok": True}
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str):
+        """Stop a queued/running job. The worker notices between stages
+        (and inside the transcribe loop) and marks it cancelled."""
+        job = _job_or_404(job_id)
+        if not job_queue.request_cancel(job.id):
+            raise HTTPException(400, f"job is {job.status}, only queued or running jobs can be stopped")
+        _publish("job", {"id": job.id, "status": job.status, "stage": "Stopping…"})
         return {"ok": True}
 
     @app.post("/api/jobs/{job_id}/update")
@@ -523,6 +603,13 @@ def create_app() -> FastAPI:
             job.custom_prompt = "" if task in ("raw", "custom") else task_default_prompts().get(task, "")
         if "custom_prompt" in payload:
             job.custom_prompt = str(payload["custom_prompt"])
+        if "model_size" in payload:
+            from meetingnotes.models import KNOWN_MODELS
+
+            model = str(payload["model_size"] or "")
+            if model and model not in KNOWN_MODELS:
+                raise HTTPException(400, "unknown model size")
+            job.model_size = model
         job_queue.persist()
         return {"ok": True}
 
@@ -539,10 +626,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/jobs/{job_id}/retry")
     def retry_job(job_id: str):
-        """Restart a failed job: back to staged, profile/task/prompt kept."""
+        """Restart a failed/cancelled job: back to staged, profile/task/prompt kept."""
         job = _job_or_404(job_id)
         if not job_queue.retry(job.id):
-            raise HTTPException(400, f"only failed jobs can restart (job is {job.status})")
+            raise HTTPException(400, f"only failed or cancelled jobs can restart (job is {job.status})")
         _publish("job", {"id": job.id, "status": "staged"})
         return {"ok": True}
 

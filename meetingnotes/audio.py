@@ -7,6 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .ffbin import FFmpegMissing, find_ffmpeg
+
 
 @dataclass
 class AudioPrepResult:
@@ -17,6 +19,13 @@ class AudioPrepResult:
     source: Path
 
 
+def _binary(name: str) -> str:
+    p = find_ffmpeg(name)
+    if not p:
+        raise FFmpegMissing(name)
+    return str(p)
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     kwargs = dict(capture_output=True, text=True, check=False)
     if sys.platform.startswith("win"):
@@ -25,17 +34,14 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(cmd, **kwargs)
     except FileNotFoundError:
-        raise RuntimeError(
-            f"'{cmd[0]}' not found. Install ffmpeg and ensure it is on your PATH. "
-            "See https://ffmpeg.org/download.html"
-        ) from None
+        raise FFmpegMissing(cmd[0]) from None
 
 
 def probe_duration(path: Path) -> float:
     """Return duration in seconds via ffprobe (0.0 on failure)."""
     r = _run(
         [
-            "ffprobe", "-v", "error",
+            _binary("ffprobe"), "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             str(path),
@@ -67,7 +73,7 @@ def extract_audio(
     af = ",".join(filters)
 
     cmd = [
-        "ffmpeg", "-y", "-i", str(source),
+        _binary("ffmpeg"), "-y", "-i", str(source),
         "-vn",
         "-af", af,
         "-ar", str(sample_rate),
@@ -105,7 +111,7 @@ def chunk_audio(
     chunk_dir.mkdir(parents=True, exist_ok=True)
     pattern = chunk_dir / "chunk_%03d.wav"
     cmd = [
-        "ffmpeg", "-y", "-i", str(wav_path),
+        _binary("ffmpeg"), "-y", "-i", str(wav_path),
         "-f", "segment",
         "-segment_time", str(chunk_length_s),
         "-c", "copy",

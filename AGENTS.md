@@ -1,4 +1,4 @@
-# AGENTS.md — meetingnotes CLI contract
+# AGENTS.md: meetingnotes CLI contract
 
 `meetingnotes-cli.exe` (or `python -m meetingnotes.cli`) is the headless interface for
 autonomous agents and automated pipelines. Every command is non-interactive, every
@@ -12,18 +12,21 @@ command supports `--json` for machine-readable output, and exit codes are stable
 | `1` | usage error (bad flags, missing file, unknown key) |
 | `2` | processing failure (transcription error, LLM error, network) |
 
-Check the exit code, not stdout content — stdout format is documented but errors
+Check the exit code, not stdout content. stdout format is documented, but errors
 on stderr take precedence.
 
 ## First-run requirements
 
-1. **ffmpeg** must be on `PATH` (audio extraction).
-2. **Whisper model**: none is downloaded automatically by the CLI. Check availability
-   with `models list`; a `run` with a missing model fails with exit code 2. Download
-   explicitly: `meetingnotes-cli models download large-v3` (large-v3 ≈ 3 GB).
+1. **ffmpeg**: bundled in the packaged builds (`_internal/ffmpeg/`), so nothing
+   to install. Running from source (`python -m meetingnotes.cli`) needs ffmpeg
+   on `PATH`.
+2. **Whisper model**: the first `run` downloads the needed model automatically
+   (blocking, with progress lines; silent under `--json`). Pre-fetch with
+   `models download <size>` to keep later runs fast; `models status <size>`
+   checks without downloading. large-v3 is ≈ 3 GB, tiny 75 MB.
 3. **LLM is optional.** Default `--task raw` needs no LLM at all. Formatted output
-   (`--task clean|notes|actions|testplan|summary`) requires a configured provider —
-   see [Settings](#settings).
+   (`--task clean|notes|actions|testplan|summary`) requires a configured provider.
+   See [Settings](#settings).
 
 ## Commands
 
@@ -41,13 +44,18 @@ Key flags (all optional; defaults come from saved settings):
 | `--profile` | see `meetingnotes-cli profiles` (default: `generic`) |
 | `--llm` | `none` · `ollama` · `compat` (LM Studio/vLLM/llama.cpp) · `anthropic` · `openai` · `openrouter` |
 | `--llm-model` | model name for the provider |
+| `--prompt` | custom prompt (implies a formatted output) |
 | `--model` | whisper size: `tiny base small medium large-v1 large-v2 large-v3` |
-| `--device` | `cuda` · `cpu` |
-| `--language` | ISO code (`ru`, `en`, …) |
-| `--out-dir` | output directory (default `~\Downloads\meetingnotes`) |
+| `--device` | `cuda` · `cpu` (a failed CUDA load falls back to CPU automatically) |
+| `--compute-type` | `float16` · `int8` · `int8_float16` · `float32` |
+| `--language` | ISO code (`ru`, `en`, …): the language spoken in the audio |
+| `--no-normalize` | skip loudness normalization |
+| `--chunk-length` | chunk size in seconds (default 600) |
+| `--out-dir` | output directory (default: `results/` next to the app) |
+| `--work-dir` | where intermediate audio lives (default: `data/work/`) |
 | `--json` | machine-readable output |
 
-**Agent-friendly one-liner** — raw transcript, no LLM, JSON result:
+**Agent-friendly one-liner**: raw transcript, no LLM, JSON output:
 
 ```powershell
 meetingnotes-cli run meeting.mp4 --task raw --json
@@ -69,7 +77,7 @@ JSON payload:
 }
 ```
 
-`segments_json` is an array of `{start, end, text}` — the usual machine-readable
+`segments_json` is an array of `{start, end, text}`: the machine-readable
 transcript for downstream tooling. `--task raw` never calls any LLM and never needs keys.
 
 Custom output shaping:
@@ -85,7 +93,7 @@ meetingnotes-cli profiles --json
 ```
 
 Returns `profiles` (name, description, language, correction count), `tasks`, and
-`task_prompts` (built-in prompt per task — useful as templates for `--task custom`).
+`task_prompts` (built-in prompt per task, useful as templates for `--task custom`).
 
 ### manage whisper models
 
@@ -98,8 +106,8 @@ meetingnotes-cli models open-folder
 ```
 
 All accept `--json`. `download` blocks until finished; poll `status` instead if
-you need progress from another process. (Memory preload/unload is GUI-only —
-a one-shot CLI process cannot keep a model warm for later invocations.)
+you need progress from another process. (Memory preload/unload is GUI-only. A
+one-shot CLI process cannot keep a model warm for later invocations.)
 
 ### settings
 
@@ -110,7 +118,8 @@ meetingnotes-cli settings set default_profile=scada language=ru
 meetingnotes-cli settings reset                        # factory defaults
 ```
 
-Settings persist to `~/.meetingnotes/settings.json`. Keys mirror the JSON returned by
+Settings persist to `data/settings.json` next to the app (portable builds) or
+`.local/settings.json` in a dev checkout. Keys mirror the JSON returned by
 `settings get`. Secrets are write-only from the CLI (`get` returns masked values).
 
 ### run the web UI
@@ -152,7 +161,7 @@ meetingnotes-cli settings get llm --json         # provider configured?
   human progress lines (suppressed in `--json` mode).
 - Results always land in the output dir as `<name>.raw.txt`, `<name>.txt` (glossary-
   corrected), `<name>.json` (timestamped segments), and `<name>.<task>.md` for LLM tasks.
-- The GUI exe and CLI share settings and the model cache — downloads in one are
+- The GUI exe and CLI share settings and the model cache: downloads in one are
   visible to the other.
 - A second instance is prevented for the GUI exe only; parallel CLI runs are your
-  responsibility (GPU memory is finite — serialize `run` commands).
+  responsibility (GPU memory is finite, so serialize `run` commands).
