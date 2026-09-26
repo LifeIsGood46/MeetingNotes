@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,8 @@ from .transcribe import transcribe, TranscriptionResult
 from .correct import apply_corrections, correct_segments
 from .llm import LLMProvider, get_provider
 from . import polish
+
+log = logging.getLogger("meetingnotes.pipeline")
 
 
 @dataclass
@@ -118,14 +121,24 @@ def run_pipeline(
 
     profile: Profile = load_profile(opts.profile, language=opts.language)
     _log(progress_cb, f"Profile: {profile.name} — {profile.description}")
+    log.info("pipeline start: source=%s task=%s profile=%s lang=%s model=%s "
+             "device=%s compute=%s normalize=%s chunk_s=%s",
+             source.name, opts.task, profile.name, opts.language or "-",
+             opts.model_size or config.DEFAULT_MODEL_SIZE,
+             opts.device or config.DEFAULT_DEVICE,
+             opts.compute_type or config.DEFAULT_COMPUTE_TYPE,
+             opts.normalize_audio, opts.chunk_length_s)
 
     # --- Stage 1: audio extraction / preprocessing -------------------------
     if cancelled():
         raise CancelledError("cancelled by user")
     wav_path = work_dir / f"{source.stem}.wav"
     _log(progress_cb, f"[1/4] Extracting + normalizing audio -> {wav_path.name}", 0.01)
+    t_stage = time.time()
     prep = extract_audio(source, wav_path, normalize=opts.normalize_audio)
     _log(progress_cb, f"      duration: {prep.duration_s:.0f}s", 0.03)
+    log.info("extract done in %.1fs: %.1fs of audio", time.time() - t_stage,
+             prep.duration_s)
 
     # --- Ensure the model exists BEFORE transcribing, so a first-ever run
     # downloads visibly (with %) instead of stalling silently inside faster-whisper.
@@ -139,6 +152,7 @@ def run_pipeline(
                 progress_cb, msg, None if frac is None else 0.05 + 0.10 * frac),
             should_cancel=cancelled,
         )
+        log.info("model %s present locally", model_size)
 
     if cancelled():
         raise CancelledError("cancelled by user")
@@ -148,6 +162,7 @@ def run_pipeline(
     chunks = chunk_audio(wav_path, work_dir / "chunks", chunk_length_s=opts.chunk_length_s)
     if len(chunks) > 1:
         _log(progress_cb, f"      long audio: {len(chunks)} chunks", 0.15)
+    log.info("transcribing %d chunk(s)", len(chunks))
 
     def _transcribe_progress(msg: str, frac: float | None = None) -> None:
         _log(progress_cb, msg, None if frac is None else 0.15 + 0.70 * frac)
@@ -183,6 +198,8 @@ def run_pipeline(
 
     if cancelled():
         raise CancelledError("cancelled by user")
+    log.info("transcribe done in %.1fs: %d segments", time.time() - transcribe_t0,
+             len(all_segments))
 
     # --- Stage 3: glossary correction --------------------------------------
     _log(progress_cb, "[3/4] Applying glossary corrections", 0.87)
@@ -207,6 +224,8 @@ def run_pipeline(
             raise CancelledError("cancelled by user")
         llm: LLMProvider = _resolve_llm(opts)
         _log(progress_cb, f"[4/4] LLM stage: provider={llm.provider_name} model={llm.model} task={opts.task}", 0.90)
+        log.info("LLM stage: provider=%s model=%s task=%s", llm.provider_name,
+                 llm.model, opts.task)
         cleaned = polish.clean_transcript(transcript_corrected, llm)
         if opts.task == "clean":
             document = cleaned

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import queue
 import re
 import shutil
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -34,6 +36,8 @@ APP_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(APP_DIR / "templates"))
 STATIC_DIR = APP_DIR / "static"
 _started_at = time.strftime("%Y-%m-%d %H:%M:%S")
+
+log = logging.getLogger("meetingnotes.webapp")
 
 # SSE subscribers (asyncio queues; see /api/events why this must be async)
 _sse_subscribers: list = []
@@ -222,6 +226,11 @@ def _run_job(job: Job, source: Path) -> None:
     try:
         settings = load_settings()
         task, prompt = _resolve_task(job.task, job.custom_prompt.strip())
+        log.info("job %s (%s) starting: task=%s profile=%s lang=%s model=%s device=%s "
+                 "compute=%s", job.id, job.filename, task, job.profile,
+                 job.language or settings.language,
+                 job.model_size or settings.model_size, settings.device,
+                 settings.compute_type)
 
         # Fail fast on bad LLM credentials before transcription burns minutes.
         if task != "raw":
@@ -229,6 +238,7 @@ def _run_job(job: Job, source: Path) -> None:
             from meetingnotes.pipeline import _resolve_llm
 
             _resolve_llm(PipelineOptions(task=task)).verify_credentials()
+            log.info("job %s: LLM credentials OK", job.id)
 
         out_root = _resolve_out_dir(settings)
         try:
@@ -260,6 +270,9 @@ def _run_job(job: Job, source: Path) -> None:
         job.out_dir = str(job_dir)
         job_queue.set_status(job, "done")
         job_queue.persist()
+        log.info("job %s done in %.1fs -> %s (files: %s)", job.id,
+                 result.elapsed_s, job_dir,
+                 ", ".join(sorted(p.name for p in result.outputs.values())))
         _publish("job", {"id": job.id, "status": "done",
                          "outputs": job.outputs, "out_dir": job.out_dir})
     except CancelledError:
@@ -268,6 +281,7 @@ def _run_job(job: Job, source: Path) -> None:
         job_queue.log(job, "Cancelled.")
         job_queue.clear_cancel(job.id)
         job_queue.persist()
+        log.info("job %s cancelled by user", job.id)
         _publish("job", {"id": job.id, "status": "cancelled"})
     except Exception as e:
         # Don't litter the save folder with empty dirs from failed runs.
@@ -275,6 +289,7 @@ def _run_job(job: Job, source: Path) -> None:
         job_queue.set_status(job, "failed", error=str(e))
         job_queue.log(job, "Failed.")
         job_queue.persist()
+        log.error("job %s failed: %s\n%s", job.id, e, traceback.format_exc())
         _publish("job", {"id": job.id, "status": "failed", "error": str(e)})
 
 
@@ -369,6 +384,9 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 def create_app() -> FastAPI:
+    from meetingnotes import logs as applog
+
+    applog.setup_logging()
     app = FastAPI(title="meetingnotes", version=__version__)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     if STATIC_DIR.is_dir():
@@ -387,6 +405,44 @@ def create_app() -> FastAPI:
         from meetingnotes import ffbin
 
         return ffbin.ffmpeg_status()
+
+    # ------------------------------- debug log -----------------------------
+
+    @app.get("/api/log")
+    def get_log(tail: int = 0):
+        """The debug log for handover after a test run.
+
+        Returns the whole file by default, or the last `tail` bytes.
+        """
+        from meetingnotes import logs as applog
+
+        path = applog.log_path_for_ui()
+        if not path.is_file():
+            return {"path": str(path), "exists": False, "text": ""}
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if tail and tail > 0 and len(text) > tail:
+            text = text[-tail:]
+        return {"path": str(path), "exists": True, "bytes": len(text), "text": text}
+
+    @app.post("/api/log/open-folder")
+    def open_log_folder():
+        from meetingnotes import logs as applog
+
+        folder = applog.log_path_for_ui().parent
+        if not folder.is_dir():
+            raise HTTPException(404, "no log folder yet")
+        try:
+            _open_in_explorer(folder)
+        except OSError as e:
+            raise HTTPException(500, f"Explorer failed to start: {e}")
+        return {"ok": True, "folder": str(folder)}
+
+    @app.post("/api/log/ui-error")
+    def log_ui_error(payload: dict):
+        """The UI posts caught errors here so they land in the handover log."""
+        log.error("UI error [%s]: %s", payload.get("where", "?"),
+                  payload.get("message", "?"))
+        return {"ok": True}
 
     # ------------------------------ settings -------------------------------
 

@@ -103,7 +103,8 @@ def test_resolve_task_raw_clean_custom_rules():
 
 
 def test_get_model_cuda_failure_falls_back_to_cpu(monkeypatch):
-    """A CUDA load error must switch to CPU + int8, not kill the job."""
+    """A CUDA load error must switch to CPU + int8, not kill the job, and
+    report the device that actually ran (the old code lied and said cuda)."""
     from meetingnotes import transcribe as tr
 
     calls = []
@@ -121,12 +122,53 @@ def test_get_model_cuda_failure_falls_back_to_cpu(monkeypatch):
     fake_mod.WhisperModel = FakeWhisperModel
     monkeypatch.setitem(sys.modules, "faster_whisper", fake_mod)
     monkeypatch.setattr(tr, "_MODEL_CACHE", {})
+    monkeypatch.setattr(tr, "_cuda_available", lambda: True)
 
     reasons = []
-    model = tr._get_model("tiny", "cuda", "float16", on_fallback=reasons.append)
+    model, used_dev, used_comp = tr._get_model(
+        "tiny", "cuda", "float16", on_fallback=reasons.append)
     assert isinstance(model, FakeWhisperModel)
     assert calls == [("cuda", "float16"), ("cpu", "int8")]
+    assert (used_dev, used_comp) == ("cpu", "int8")
     assert reasons and "CPU" in reasons[0]
+    # The raw DLL error must NOT be shown to the user.
+    assert "cublas" not in reasons[0].lower()
+
+
+def test_transcribe_precheck_skips_cuda_without_gpu(monkeypatch, tmp_path):
+    """No GPU present: go straight to CPU and never log a CUDA error."""
+    from meetingnotes import transcribe as tr
+    from meetingnotes.profiles import load_profile
+
+    monkeypatch.setattr(tr, "_cuda_available", lambda: False)
+
+    class FakeWhisperModel:
+        def __init__(self, size, device, compute_type):
+            assert device == "cpu", "pre-check must avoid the cuda load"
+            self.device = device
+
+        def transcribe(self, *a, **k):
+            import unittest.mock as um
+
+            return iter([]), um.Mock(duration=1.0)
+
+    import sys
+    import types
+
+    fake_mod = types.ModuleType("faster_whisper")
+    fake_mod.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_mod)
+    monkeypatch.setattr(tr, "_MODEL_CACHE", {})
+
+    msgs = []
+    profile = load_profile("generic", language="en")
+    tr.transcribe(tmp_path / "a.wav", profile, model_size="tiny",
+                  device="cuda", compute_type="float16",
+                  progress_cb=lambda m, f=None: msgs.append(m))
+    joined = " ".join(msgs).lower()
+    assert "no gpu detected" in joined
+    assert "transcribing" in joined and "[cpu/int8]" in joined
+    assert "cuda" not in joined
 
 
 def test_get_model_cpu_failure_still_raises(monkeypatch):

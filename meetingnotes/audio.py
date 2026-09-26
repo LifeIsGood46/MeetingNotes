@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from .ffbin import FFmpegMissing, find_ffmpeg
+
+log = logging.getLogger("meetingnotes.audio")
 
 
 @dataclass
@@ -31,10 +34,15 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     if sys.platform.startswith("win"):
         # Prevent console window popups in windowed exe
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    log.debug("run: %s", " ".join(cmd))
     try:
-        return subprocess.run(cmd, **kwargs)
+        r = subprocess.run(cmd, **kwargs)
     except FileNotFoundError:
         raise FFmpegMissing(cmd[0]) from None
+    if r.returncode != 0:
+        log.warning("ffmpeg exit %s: %s", r.returncode,
+                    (r.stderr or "").strip()[-500:])
+    return r
 
 
 def probe_duration(path: Path) -> float:

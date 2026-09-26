@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -10,6 +12,8 @@ from typing import Callable
 from . import config
 from .errors import CancelledError
 from .profiles import Profile
+
+log = logging.getLogger("meetingnotes.transcribe")
 
 
 # Display names for the language codes accepted by faster-whisper.
@@ -115,17 +119,34 @@ def unload_models(model_size: str | None = None) -> int:
     return len(keys)
 
 
+def _cuda_available() -> bool:
+    """True when a CUDA device is actually present.
+
+    Checked before attempting a GPU load so no-GPU machines (and VMs without
+    passthrough) quietly run on CPU instead of logging a scary DLL error and
+    then falling back. If the check itself fails we say "available" and let
+    the load attempt decide.
+    """
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:
+        return True
+
+
 def _get_model(model_size: str, device: str, compute_type: str,
-               on_fallback=None):
+               on_fallback=None) -> tuple[object, str, str]:
     """Load (and cache) a faster-whisper model, lazily importing the dep.
 
-    A CUDA load that fails (no NVIDIA GPU, driver mismatch, DLL trouble)
-    falls back to CPU + int8 instead of dying — the job just runs slower.
+    Returns ``(model, device, compute_type)`` with the device ACTUALLY used:
+    a CUDA load that fails (driver mismatch, DLL trouble) falls back to
+    CPU + int8 instead of dying, and callers must report the real device.
     ``on_fallback(reason)`` is invoked (if given) so callers can log it.
     """
     key = (model_size, device, compute_type)
     if key in _MODEL_CACHE:
-        return _MODEL_CACHE[key]
+        return _MODEL_CACHE[key], device, compute_type
 
     try:
         from faster_whisper import WhisperModel
@@ -135,23 +156,28 @@ def _get_model(model_size: str, device: str, compute_type: str,
             "or use an environment that has it."
         ) from e
 
-    print(f"Loading model {model_size} ({device}, {compute_type}) ...", flush=True)
+    log.info("loading model %s (%s, %s)", model_size, device, compute_type)
+    t0 = time.time()
     try:
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
     except Exception as e:
         if device == "cuda":
-            reason = (f"CUDA unavailable ({type(e).__name__}: {e}). "
-                      "Falling back to CPU (int8) — transcription will be slower.")
+            # Short, non-alarming message for the progress line; the full
+            # exception goes to the debug log for diagnosis.
+            reason = ("The GPU could not be used; running on CPU (int8) instead. "
+                      "Transcription will be slower.")
+            log.error("CUDA load failed, falling back to CPU: %s\n%s",
+                      e, traceback.format_exc())
             if on_fallback:
                 on_fallback(reason)
-            else:
-                print(reason, flush=True)
             device, compute_type = "cpu", "int8"
             model = WhisperModel(model_size, device=device, compute_type=compute_type)
         else:
             raise
+    log.info("model %s loaded in %.1fs on %s/%s", model_size, time.time() - t0,
+             device, compute_type)
     _MODEL_CACHE[(model_size, device, compute_type)] = model
-    return model
+    return model, device, compute_type
 
 
 def transcribe(
@@ -181,8 +207,13 @@ def transcribe(
     log = progress_cb or (lambda _msg, _frac=None: None)
 
     def _do_transcribe(dev: str, comp: str):
-        model = _get_model(model_size, dev, comp,
-                          on_fallback=lambda reason: log(reason))
+        # No CUDA device present: switch before loading so no-GPU machines and
+        # passthrough-less VMs never surface a CUDA error, even briefly.
+        if dev == "cuda" and not _cuda_available():
+            log("No GPU detected — running on CPU (int8). Transcription will be slower.")
+            dev, comp = "cpu", "int8"
+        model, dev, comp = _get_model(model_size, dev, comp,
+                                      on_fallback=lambda reason: log(reason))
         log(f"Transcribing {audio_path.name} [{dev}/{comp}]")
         start = time.time()
         segments_iter, info = model.transcribe(

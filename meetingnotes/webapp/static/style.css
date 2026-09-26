@@ -248,8 +248,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
 }
 .progress-fill { height: 100%; width: 0%; background: var(--grad); transition: width 0.2s; border-radius: 999px; }
+/* Indeterminate sweep: keep the moving band small and animate only transform
+   (compositor-friendly), not margin-left (layout every frame). */
 .progress-fill.indeterminate { width: 30% !important; animation: indet 1.3s ease-in-out infinite; }
-@keyframes indet { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+@keyframes indet {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); }
+}
 .job-progress { margin: 0.45rem 0 0; }
 
 .badge {
@@ -262,8 +267,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   display: inline-flex; align-items: center; gap: 0.3rem;
 }
 .badge-queued { background: #243044; color: #9fb6e8; border-color: #33405c; }
-.badge-running { background: #243044; color: var(--accent); border-color: #35507e; animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+/* No pulse animation: a permanently animating element keeps a composited
+   layer repainting forever, which made the whole UI feel laggy on VMs with
+   software rendering. The accent color carries the "running" signal. */
+.badge-running { background: #243044; color: var(--accent); border-color: #35507e; }
 .badge-done { background: #143326; color: var(--ok); border-color: #1f4d38; }
 .badge-failed { background: #3a1d1d; color: var(--fail); border-color: #5a2828; }
 .badge-cancelled { background: #33302a; color: #d6c08a; border-color: #55492e; }
@@ -293,7 +300,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   position: fixed; z-index: 80; pointer-events: none;
   border: 2px solid var(--violet);
   border-radius: var(--r-sm);
-  box-shadow: 0 0 0 5px rgba(139, 92, 246, 0.28), 0 0 28px rgba(139, 92, 246, 0.45);
+  /* One modest ring instead of layered outer glows: large animated blur
+     radii are what dragged on software-rendered VMs. */
+  box-shadow: 0 0 0 5px rgba(139, 92, 246, 0.28);
 }
 .wizard-tip {
   position: fixed; z-index: 81;
@@ -309,8 +318,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .wizard-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; }
 .wizard-nav { display: flex; gap: 0.5rem; }
 /* while the wizard points inside Settings, that modal floats above the shade
-   so it stays bright and clickable; outline + tip are higher still */
-body.wizard-settings #settings-overlay { z-index: 75; }
+   so it stays bright and clickable; outline + tip are higher still.
+   The modal is shifted left to reserve a column for the tip, so the tip can
+   never cover the very fields the step is explaining. */
+body.wizard-settings #settings-overlay {
+  z-index: 75;
+  justify-content: flex-start;
+  padding-left: max(0.5rem, calc((100vw - 760px - 400px) / 2));
+  padding-right: 400px;
+}
+@media (max-width: 1200px) {
+  body.wizard-settings #settings-overlay { padding-right: 320px; }
+}
+@media (max-width: 1000px) {
+  /* Very narrow: give the tip a thin column and let it shrink. */
+  body.wizard-settings #settings-overlay { padding-right: 260px; }
+}
 .help-type { margin: 0.25rem 0; }
 .help-type code { min-width: 74px; display: inline-block; }
 

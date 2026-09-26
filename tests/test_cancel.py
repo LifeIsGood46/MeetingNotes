@@ -60,7 +60,7 @@ def test_transcribe_loop_honours_should_cancel(tmp_path: Path):
         calls["n"] += 1
         return calls["n"] >= 2  # cancel on the second segment
 
-    with mock.patch.object(tr, "_get_model", return_value=FakeModel()):
+    with mock.patch.object(tr, "_get_model", return_value=(FakeModel(), "cpu", "int8")):
         with pytest.raises(CancelledError):
             tr.transcribe(tmp_path / "a.wav", profile, model_size="tiny",
                           device="cpu", compute_type="int8",

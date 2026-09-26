@@ -286,6 +286,14 @@
         <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-power"/></svg> Quitting</h2>
         <p class="muted small folders-text" id="help-quit-text">Close the app window to stop everything. If the app fell back to a browser tab, closing the tab also stops it (there is a short grace period for reloads), or use the Quit button in the left rail.</p>
       </div>
+      <div class="card">
+        <h2><svg class="ic ic-sm" width="15" height="15"><use href="#i-doc"/></svg> Troubleshooting</h2>
+        <p class="muted small folders-text">The app keeps a debug log of what the backend did: startup, chosen devices, every job and the full error text. If something misbehaves, open the folder and send <code>meetingnotes.log</code>.</p>
+        <div class="model-actions">
+          <button class="btn btn-ghost btn-small" id="help-log-btn"><svg class="ic ic-sm" width="15" height="15"><use href="#i-folder"/></svg> Open log folder</button>
+        </div>
+        <p class="muted small" id="help-log-path"></p>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-small" id="help-close-btn">Close</button>
       </div>

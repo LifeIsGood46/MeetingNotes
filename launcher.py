@@ -1,14 +1,16 @@
 """App entry point: server + native window (no browser required).
 
 This is what the GUI exe runs. The UI opens in a native OS window via
-pywebview (WebView2); if that is unavailable it falls back to a chromeless
-Edge app window, then to the system browser as a last resort.
+WebView2 COM; if that is unavailable it falls back to a chromeless Edge app
+window, then to the system browser as a last resort.
 
 Portable: the lockfile and logs live beside the exe (see meetingnotes.config).
+Debug log (hand this file over after a test run): data/logs/meetingnotes.log
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -20,12 +22,15 @@ from pathlib import Path
 import uvicorn
 
 from meetingnotes import config
+from meetingnotes import logs as applog
 from meetingnotes.webapp.main import create_app
 
 HOST = "127.0.0.1"
 PORT = 8123
 LOCK_PATH = config.APP_DIR / "meetingnotes.lock"
 LOG_PATH = config.APP_DIR / "launcher.log"
+
+log = logging.getLogger("meetingnotes.launcher")
 
 
 def _instance_running(url: str, timeout: float = 2.0) -> bool:
@@ -61,13 +66,14 @@ def _release_lock() -> None:
 
 
 def _log(msg: str) -> None:
-    """One line in the portable log: which window path the app took."""
+    """Portable one-liner (kept for the smoke gate) + the debug log."""
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
     except Exception:
         pass
+    log.info(msg)
 
 
 def _wait_ready(url: str, timeout: float = 15.0) -> None:
@@ -114,13 +120,15 @@ def _open_native_window(url: str, server_stopper) -> bool:
         open_webview2_window(url, "MeetingNotes", 1180, 800, icon_ico=icon)
         return True
     except Exception:
-        try:
-            import traceback
+        import traceback
 
+        detail = traceback.format_exc()
+        log.error("webview2 window failed:\n%s", detail)
+        _log(f"window: WebView2 failed ({detail.splitlines()[-1][:160]})")
+        try:
             LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with LOG_PATH.open("a", encoding="utf-8") as f:
-                f.write(f"\n=== webview2 failed {time.strftime('%H:%M:%S')} ===\n"
-                        f"{traceback.format_exc()}\n")
+                f.write(f"\n=== webview2 failed {time.strftime('%H:%M:%S')} ===\n{detail}\n")
         except Exception:
             pass
         return False
@@ -222,6 +230,8 @@ def run(host: str = HOST, port: int = PORT) -> int:
         return 0
 
     try:
+        applog.setup_logging()
+        log.info("launcher starting (host=%s port=%s no_window=%s)", host, port, no_window)
         app = create_app()
         # log_config=None: the windowed exe has no stdout; the default
         # logging config would crash binding a stream formatter.
@@ -230,6 +240,7 @@ def run(host: str = HOST, port: int = PORT) -> int:
 
         server_thread = threading.Thread(target=server.run, daemon=True)
         server_thread.start()
+        log.info("server thread started")
 
         if no_window:
             server_thread.join()

@@ -113,7 +113,7 @@
       },
       {
         title: "Step 1 — get a model",
-        text: "I opened Settings for you. Pick a model size (tiny is only 75 MB and fine for trying) and press Download. The choice is saved as your default. If you'd rather fetch it later, just press Next — the first job will download it with a progress bar.",
+        text: "Settings is open on the model section. Whisper models trade speed for accuracy: tiny is a 75 MB download and fine for trying things out, large-v3 is the most accurate (about 3 GB). Pick one and press Download — it's saved as your default. Press Next to fetch it later instead; the first job will download whatever it needs.",
         optional: true, // don't trap users who want to skip the 3 GB models
         targets: settingsParts(T.modelControls),
         action: () => {
@@ -163,7 +163,7 @@
             if (document.querySelector(".job[data-status='done']")) {
               return "There's already a finished job on the list. Press Next to see where its files went.";
             }
-            return "There's already a job on the list. Press Next to start it.";
+            return "Recording added. Press Next to set it up and run it.";
           }
           return "Drop any audio or video file into the upload box — or click \u201cTry with a sample\u201d if you have nothing handy. A card appears when the file is ready.";
         },
@@ -181,32 +181,35 @@
           if (!$("#settings-overlay").hidden) closeSettings();
         },
         done: () => document.querySelectorAll(".job").length > 0,
+        // Adding the recording is this step's whole job — glide on by itself.
+        autoAdvance: true,
       },
       {
         title: () => {
           const running = document.querySelector(".job[data-status='running'], .job[data-status='queued']");
           const done = document.querySelector(".job[data-status='done']");
-          if (running) return "Step 5 — the job is running";
+          if (running) return "Step 5 — running";
           if (done) return "Step 5 — done";
-          return "Step 5 — press Start";
+          const failed = document.querySelector(".job[data-status='failed'], .job[data-status='cancelled']");
+          if (failed) return "Step 5 — that run didn't finish";
+          return "Step 5 — run it your way";
         },
-        // Adapt to reality: the job may already be running or finished by the
-        // time the user gets here — never point at (or describe) a control
-        // that isn't on screen.
+        // This step is about the CARD's controls and starting the job — not a
+        // repeat of "add a recording" (the old copy duplicated step 4).
         text: () => {
           const running = document.querySelector(".job[data-status='running'], .job[data-status='queued']");
           if (running) {
-            return "The job is running — you can watch the progress bar, or press Stop on the card to abort. The finished transcript lands in its own folder.";
+            return "Transcription is running. Watch the progress bar on the card, or press Stop to abort. You can keep using the app while it works.";
           }
           const done = document.querySelector(".job[data-status='done']");
           if (done) {
-            return "The run finished. Every job writes a transcript, a raw text file, timestamped segments and a Markdown document — \u201cOpen folder\u201d takes you to all of them.";
+            return "Finished. The card's \u201cOpen folder\u201d button takes you to the transcript, raw text, timestamped segments and the Markdown document.";
           }
           const failed = document.querySelector(".job[data-status='failed'], .job[data-status='cancelled']");
           if (failed) {
-            return "That run didn't finish. Press Retry on the card to start it again (your settings are kept), or add another recording.";
+            return "That run didn't finish — press Retry on the card to start it again; your settings are kept.";
           }
-          return "Each file becomes a card. Before you start it, the card lets you pick the profile, the audio language, the output type and the model just for that file. Then press Start and watch the progress bar.";
+          return "Before starting, the card lets you adjust this file's profile, audio language, output type and model — these only affect this recording. Press Start when it looks right (or just press Start now).";
         },
         targets: () => {
           if (T.startBtn()) {
@@ -277,7 +280,16 @@
     wizard.poll = setInterval(() => {
       const s = wizard.steps[wizard.idx];
       if (!wizard.active) return;
-      els.next.disabled = !s.done() && !s.optional;
+      const wasDone = !els.next.disabled;
+      const isDone = !!s.done();
+      // Once this step's action is complete (a job appeared, the model
+      // finished downloading) move on by itself: the user shouldn't have to
+      // press Next twice for work the guide told them to do.
+      if (s.autoAdvance && isDone && !wasDone) {
+        wizardNext();
+        return;
+      }
+      els.next.disabled = !isDone && !s.optional;
       if (typeof s.text === "function") els.text.textContent = s.text();
       if (typeof s.title === "function") els.title.textContent = s.title();
       // keep the highlight glued to moving targets (cards re-render)
@@ -303,11 +315,13 @@
 
     // A target may be off-screen (settings modal scrolled, or a job card
     // below the fold); bring it into view once per step — not every poll
-    // tick, which would fight the user.
+    // tick, which would fight the user. Instant, not smooth: the animation
+    // used to still be running when the next step placed its highlight,
+    // leaving the target (and its outline) off-screen.
     if (nodes.length && step.__scrolledFor !== wizard.idx) {
       const r0 = nodes[0].getBoundingClientRect();
       if (r0.top < 8 || r0.bottom > window.innerHeight - 8) {
-        nodes[0].scrollIntoView({ block: "center", behavior: "smooth" });
+        nodes[0].scrollIntoView({ block: "center", behavior: "auto" });
       }
       step.__scrolledFor = wizard.idx;
     }
@@ -315,8 +329,13 @@
     const inSettings = nodes.some((n) => n.closest && n.closest("#settings-overlay"));
     document.body.classList.toggle("wizard-settings", inSettings);
 
+    const tipW = tip.offsetWidth || 380;
+    const tipH = tip.offsetHeight || 160;
+    const gap = 14, margin = 12;
+
     if (nodes.length) {
-      // spotlight: union of the targets' rects (8px padding)
+      // spotlight: union of the targets' rects (8px padding). Built in every
+      // case (settings or not) — the outline must follow the target either way.
       const pad = 8;
       let x1 = W, y1 = H, x2 = 0, y2 = 0;
       nodes.forEach((n) => {
@@ -334,12 +353,20 @@
       els.outline.style.width = `${x2 - x1}px`; els.outline.style.height = `${y2 - y1}px`;
       els.outline.hidden = false;
 
+      if (inSettings) {
+        // The modal is shifted left (see style.css) leaving a reserved column
+        // on the right. Dock the tip there — it can never cover the fields
+        // the step is explaining, at any window size.
+        const x = Math.max(margin, W - tipW - margin);
+        const y = Math.max(margin, Math.min((H - tipH) / 2, H - tipH - margin));
+        tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+        tip.style.right = "auto"; tip.style.bottom = "auto";
+        return;
+      }
+
       // Tip placement: pick the first candidate that fits on screen AND does
       // not overlap the highlighted control (below -> above -> right -> left).
       // The old code only tried below/above and could land on the control.
-      const tipW = tip.offsetWidth || 380;
-      const tipH = tip.offsetHeight || 160;
-      const gap = 14, margin = 12;
       const fits = (l, t) =>
         l >= margin && t >= margin && l + tipW <= W - margin && t + tipH <= H - margin;
       const overlaps = (l, t) =>
@@ -366,7 +393,6 @@
       rect(els.left, 0, H, 0, 0);
       rect(els.right, W, H, 0, 0);
       els.outline.hidden = true;
-      const tipW = tip.offsetWidth || 380;
       tip.style.left = `${Math.max(12, (W - tipW) / 2)}px`;
       tip.style.top = "auto"; tip.style.right = "auto"; tip.style.bottom = "24px";
     }
@@ -378,9 +404,19 @@
   function wizardLockScroll(lock) {
     document.documentElement.style.overflow = lock ? "hidden" : "";
   }
-  window.addEventListener("scroll", () => {
-    if (wizard.active) wizardPlace(wizard.steps[wizard.idx]);
-  }, true);
+  // Re-place at most once per animation frame: scroll fires in bursts and
+  // each placement forces layout + style writes (very costly on software
+  // rendering, where it made the whole UI feel laggy).
+  let placeQueued = false;
+  function requestPlace() {
+    if (placeQueued || !wizard.active) return;
+    placeQueued = true;
+    requestAnimationFrame(() => {
+      placeQueued = false;
+      if (wizard.active) wizardPlace(wizard.steps[wizard.idx]);
+    });
+  }
+  window.addEventListener("scroll", requestPlace, true);
 
   // The tip floats over the app, so a wheel gesture on it would normally be
   // swallowed. Forward the delta to the scrollable container underneath
@@ -425,15 +461,17 @@
   $("#wizard-next").addEventListener("click", wizardNext);
   $("#wizard-back").addEventListener("click", wizardBack);
   $("#wizard-skip").addEventListener("click", () => wizardFinish(true));
-  window.addEventListener("resize", () => {
-    if (wizard.active) wizardPlace(wizard.steps[wizard.idx]);
-  });
+  window.addEventListener("resize", requestPlace);
 
   // ---------------- help overlay ----------------
   function openHelp() {
     $("#help-overlay").hidden = false;
     const folderEl = $("#help-folders-paths");
     if (folderEl && !folderEl.textContent.trim()) updateFoldersPaths();
+    fetch("/api/log?tail=0").then((r) => r.json()).then((d) => {
+      const el = $("#help-log-path");
+      if (el) el.textContent = d.exists ? `Current log: ${d.path}` : `Log will appear here: ${d.path}`;
+    }).catch(() => {});
   }
   function closeHelp() { $("#help-overlay").hidden = true; }
   $("#help-btn").addEventListener("click", openHelp);
@@ -444,6 +482,37 @@
   $("#help-guide-btn").addEventListener("click", () => {
     closeHelp();
     openWizard();
+  });
+  $("#help-log-btn").addEventListener("click", async () => {
+    try {
+      const r = await fetch("/api/log/open-folder", { method: "POST" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        await modalAlert("Could not open log folder", d.detail || `HTTP ${r.status}`);
+      }
+    } catch (e) {
+      await modalAlert("Could not open log folder", String(e));
+    }
+  });
+
+  // Any uncaught UI error goes to the backend log too, so one file tells the
+  // whole story. Errors already surfaced via modals are reported at the catch
+  // site; this covers the rest.
+  window.addEventListener("error", (e) => {
+    try {
+      fetch("/api/log/ui-error", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ where: `${e.filename}:${e.lineno}`, message: String(e.message) }),
+      });
+    } catch (_) {}
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    try {
+      fetch("/api/log/ui-error", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ where: "unhandledrejection", message: String(e.reason) }),
+      });
+    } catch (_) {}
   });
 
   // ---------------- dropdown population ----------------
@@ -807,12 +876,46 @@
       ? `${staged} to start, ${other} processed`
       : `${other} job(s)`;
     const list = $("#jobs-list");
-    list.innerHTML = "";
     // Empty queue shows a plain hello instead of a tutorial.
     const empty = data.jobs.length === 0;
     $("#landing-hello").hidden = !empty;
     $("#jobs-pane").hidden = empty;
-    data.jobs.forEach((j) => list.appendChild(jobCard(j)));
+
+    // Rebuild only the cards whose status changed. A full innerHTML wipe on
+    // every refresh threw away the DOM node under the pointer, so clicks
+    // landed on detached elements (buttons "needed a second click") and the
+    // rebuild itself was expensive on software-rendered VMs.
+    const wanted = new Map(data.jobs.map((j) => [j.id, j]));
+    const order = data.jobs.map((j) => j.id);
+
+    // Remove cards that no longer exist; drop stale node references.
+    [...list.children].forEach((el) => {
+      const id = el.id.replace(/^job-/, "");
+      if (!wanted.has(id)) {
+        el.remove();
+        jobs.delete(id);
+      }
+    });
+
+    // Rebuild a card when its status changed (the card's UI depends on it).
+    data.jobs.forEach((j) => {
+      const existing = jobs.get(j.id);
+      if (existing && existing.dataset.status !== j.status) {
+        existing.remove();
+        jobs.delete(j.id);
+      }
+    });
+
+    // Create missing cards, then fix ordering (moving nodes is cheap and
+    // keeps the existing ones alive).
+    order.forEach((id, i) => {
+      let el = jobs.get(id);
+      if (!el) {
+        el = jobCard(wanted.get(id));
+      }
+      const at = list.children[i];
+      if (at !== el) list.insertBefore(el, at || null);
+    });
   }
 
   function progressBarHtml(fraction) {

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Debug log for handover.** The backend writes one rotating file
+  (`data/logs/meetingnotes.log`, `.local/logs/` in dev) covering startup,
+  environment, window strategy, device selection and CPU fallbacks, every
+  job's lifecycle, pipeline stages and full error tracebacks. Open it from
+  Help → Troubleshooting ("Open log folder"); the UI also reports uncaught
+  errors into it. `MEETING_NOTES_DEBUG=1` adds verbose detail.
 - Per-job audio-language selector on staged cards, next to profile, output
   and model. Blank means "use the saved default".
 - Every job now writes a Markdown document: LLM tasks as before, and `raw`
@@ -13,31 +19,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same regardless of task.
 
 ### Fixed
+- **CPU fallback was invisible and misreported.** A run that fell back to CPU
+  still printed `[cuda/...]`, and the raw DLL error flashed in the progress
+  bar. The real device is now reported, a no-GPU pre-check switches to CPU
+  silently before any load is attempted, and the user-facing message is a
+  plain "running on CPU (int8)" — the raw error goes to the debug log.
+- **Ollama cloud without a key.** A remote host and no key used to hit the
+  native daemon API shape and fail confusingly; it now fails fast with a
+  clear message, and cloud model listing uses the OpenAI-compatible endpoint
+  instead of `/api/tags`.
+- **Wizard LLM step covered the fields it described.** The settings modal now
+  shifts left, reserving a column where the tip docks; the spotlight follows
+  the target. Long settings steps also scroll instantly (the smooth-scroll
+  animation raced the highlight placement).
+- **Wizard duplicated its instructions.** Step 4 → 5 flow rewritten: step 4
+  auto-advances once a recording is added instead of repeating "there's
+  already a job", and step 5 explains the job card's per-file controls.
+- **UI lag on VMs.** Job-list rendering now updates only changed cards (a
+  full rebuild detached the node under the pointer, which is what made
+  buttons feel like they needed a second click), the wizard re-places its
+  highlight at most once per animation frame, and the infinite pulse
+  animation, layout-thrashing progress sweep and heavy outer glows are gone.
 - **Closing the browser tab left a python process running.** In browser-
-  fallback mode there was no window to watch, so the server lived on after
-  the tab closed. The UI now reports liveness (SSE + a `pagehide` beacon)
-  and the launcher stops the server once the last tab is gone.
+  fallback mode there was no window to watch, so the server lived on. The UI
+  now reports liveness (SSE + a `pagehide` beacon) and the launcher stops the
+  server once the last tab is gone.
 - **Confirm dialogs opened during the walkthrough rendered underneath it**
-  (dimmed and unclickable). The modal layer now sits above every wizard
-  layer.
+  (dimmed and unclickable). The modal layer now sits above every wizard layer.
 - **The walkthrough appeared late.** It is shown as soon as settings load
-  instead of after several sequential round-trips, so it no longer needs a
-  click to show up.
-- **VM rendering: guide appeared late, buttons needed two clicks, white
-  bands on maximize.** Chromium's occlusion/background throttling and GPU
-  compositing behave badly under virtualized graphics. The window host now
-  disables those features, re-asserts the WebView bounds on every geometry
-  change and after a resize ends, and moves keyboard focus into the page on
-  window activation (the first click used to be consumed by activation).
-- **Wizard tips could cover the control they describe.** Placement now tries
-  below, above, right, then left, and picks the first spot that fits on
-  screen without overlapping the spotlight.
+  instead of after several sequential round-trips.
+- **VM rendering: guide appeared late, buttons needed two clicks, white bands
+  on maximize.** Chromium's occlusion/background throttling and GPU
+  compositing behave badly under virtualized graphics; the window host
+  disables them, re-asserts the WebView bounds on geometry changes, and moves
+  focus into the page on window activation.
 - **Scrolling over the wizard tip did nothing.** Wheel events on the tip are
   forwarded to the settings pane underneath.
-- **Wizard showed stale instructions.** Steps 4 and 5 adapt their titles and
-  text to the real state (no jobs / staged / running / done / failed), step 5
-  spotlights the whole job card, and replaying from Help no longer repeats
-  "add a recording" when a job already exists.
 - Wizard step titles update live during the polling tick, not just on entry.
 
 ## [0.3.0] - 2026-09
