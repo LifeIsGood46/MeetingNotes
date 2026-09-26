@@ -160,7 +160,8 @@ meetingnotes-cli settings get llm --json         # provider configured?
 - Long files are chunked automatically (10-minute chunks) with self-correcting ETA in
   human progress lines (suppressed in `--json` mode).
 - Results always land in the output dir as `<name>.raw.txt`, `<name>.txt` (glossary-
-  corrected), `<name>.json` (timestamped segments), and `<name>.<task>.md` for LLM tasks.
+  corrected), `<name>.json` (timestamped segments), and `<name>.<task>.md` (always
+  written: for `--task raw` it is a timestamped transcript, otherwise the LLM document).
 - The GUI exe and CLI share settings and the model cache: downloads in one are
   visible to the other.
 - A second instance is prevented for the GUI exe only; parallel CLI runs are your

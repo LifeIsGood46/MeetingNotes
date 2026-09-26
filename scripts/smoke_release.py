@@ -5,12 +5,13 @@ missing binaries, broken bundles, wrong paths.
 Checks (all against the extracted zip, not the dev tree):
   1. ffmpeg.exe + ffprobe.exe present in _internal/ffmpeg/
   2. WebView2 window assets present (tlb + loader)
-  3. guide screenshots + templates + profiles present
+  3. templates, static (sample recording) and profiles present
   4. the CLI exe runs from the extracted folder (settings get --json)
-  5. the packaged app resolves ffmpeg through the resolver
+  5. bundled ffmpeg binaries launch
   6. certifi CA bundle bundled (cloud LLM TLS on clean machines)
   7. no stale pywebview/pythonnet in the bundle
-  8. (optional, --with-transcribe) real transcription of a sample to done
+  8. static UI is current (language select, wizard/beacon fixes)
+  9. (optional, --with-transcribe) real transcription of a sample to done
 
 Exit 0 = shippable, 1 = broken.
 """
@@ -111,6 +112,33 @@ def main() -> int:
             failures.append(f"stale window stack in bundle: {stale[:3]}")
         else:
             print("  ok  no pywebview/pythonnet in bundle")
+
+        # The bundled UI must be the current one: per-job language select and
+        # the wizard scroll fix. These are loose static files, so they can be
+        # checked byte-for-byte. (Python modules live inside the PYZ archive;
+        # their behavior is verified at runtime by the release check script.)
+        appjs = root / "_internal" / "meetingnotes" / "webapp" / "static" / "app.js"
+        if not appjs.is_file():
+            failures.append("app.js missing from bundle")
+        else:
+            js = appjs.read_text(encoding="utf-8", errors="replace")
+            ui_ok = True
+            for needle, label in [
+                ("job-language", "per-job language select"),
+                ("window.scrollBy", "wizard wheel forwarding"),
+                ("client-bye", "tab-close beacon"),
+                ("settingsCache.language", "adaptive job card defaults"),
+            ]:
+                if needle not in js:
+                    failures.append(f"stale UI bundle: '{label}' missing from app.js")
+                    ui_ok = False
+            if ui_ok:
+                print("  ok  bundle UI is current (language select + wizard fixes)")
+
+        # Window assets and their loose config files.
+        native = root / "_internal" / "meetingnotes" / "native"
+        if not (native / "WebView2.tlb").is_file() or not (native / "WebView2Loader.dll").is_file():
+            failures.append("WebView2 native assets missing from bundle")
 
     if failures:
         print("\nSMOKE GATE FAILURES:")

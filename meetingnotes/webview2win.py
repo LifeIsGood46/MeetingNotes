@@ -21,7 +21,12 @@ from pathlib import Path
 
 WND_CLASS = "MeetingNotesWnd"
 WM_DESTROY = 0x0002
+WM_MOVE = 0x0003
 WM_SIZE = 0x0005
+WM_SETFOCUS = 0x0007
+WM_TIMER = 0x0113
+WM_WINDOWPOSCHANGED = 0x0047
+WM_EXITSIZEMOVE = 0x0232
 
 LRESULT = ctypes.c_ssize_t
 UINT = ctypes.c_uint
@@ -111,16 +116,24 @@ def open_webview2_window(url: str, title: str, width: int, height: int,
     user32 = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32
 
-    # Windows "native occlusion" detection pauses rendering when another
-    # window overlaps ours. On VMs/RDP (and behind the VMware toolbar) it
-    # misjudges, leaving stale frames: dialogs "don't appear" until some
-    # input forces a repaint, and clicks hit the last painted frame. Turning
-    # the feature off keeps the frame and hit-test tree in sync.
-    args = "--disable-features=CalculateNativeWinOcclusion"
+    # Chromium flags that matter on VMs / RDP / slow machines. The defaults
+    # assume a desktop with stable hardware compositing; in a VM they leave
+    # stale frames (the guide "only appears after a click"), white bands on
+    # maximize, and laggy clicks. Occlusion + background throttling pause
+    # rendering of windows Chromium thinks are covered, and GPU compositing
+    # misbehaves under emulated/paravirtual graphics.
+    wanted = [
+        "--disable-features=CalculateNativeWinOcclusion",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
+        "--disable-gpu-compositing",
+    ]
     existing = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
-    if "CalculateNativeWinOcclusion" not in existing:
+    missing = [a for a in wanted if a not in existing]
+    if missing:
         os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
-            f"{existing} {args}".strip()
+            f"{existing} {' '.join(missing)}".strip()
         )
 
     class WNDCLASSEXW(ctypes.Structure):
@@ -149,6 +162,10 @@ def open_webview2_window(url: str, title: str, width: int, height: int,
     user32.DispatchMessageW.argtypes = [ctypes.POINTER(wt.MSG)]
     user32.GetClientRect.restype = ctypes.c_int
     user32.GetClientRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT)]
+    user32.SetTimer.restype = ctypes.c_size_t
+    user32.SetTimer.argtypes = [wt.HWND, ctypes.c_size_t, UINT, ctypes.c_void_p]
+    user32.KillTimer.restype = ctypes.c_int
+    user32.KillTimer.argtypes = [wt.HWND, ctypes.c_size_t]
     user32.LoadImageW.restype = wt.HANDLE
     user32.LoadImageW.argtypes = [wt.HINSTANCE, wt.LPCWSTR, UINT, ctypes.c_int,
                                   ctypes.c_int, UINT]
@@ -158,10 +175,48 @@ def open_webview2_window(url: str, title: str, width: int, height: int,
     closed = threading.Event()
     state: dict = {}
 
+    def sync_bounds(hwnd) -> None:
+        """Keep the WebView2 control exactly filling the client area.
+
+        WM_SIZE handles most resizes, but maximize/restore and DPI changes
+        can leave the control at the old size with bare white background
+        showing (seen on VMs). Re-asserting bounds on every geometry
+        message and once after the resize ends keeps it glued.
+        """
+        ctrl = state.get("ctrl")
+        if ctrl is None:
+            return
+        r = wt.RECT()
+        user32.GetClientRect(hwnd, ctypes.byref(r))
+        try:
+            ctrl.Bounds = r
+        except Exception:
+            pass
+
     def wnd_proc(hwnd, msg, wparam, lparam):
         if msg == WM_DESTROY:
             closed.set()
             user32.PostQuitMessage(0)
+        elif msg == WM_SETFOCUS:
+            # Hand keyboard focus to the web content. Without this the first
+            # click only activates the window and a second click is needed —
+            # the "buttons need a double click" report on the VM.
+            ctrl = state.get("ctrl")
+            if ctrl is not None:
+                try:
+                    ctrl.MoveFocus(0)  # COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC
+                except Exception:
+                    pass
+            return 0
+        elif msg in (WM_SIZE, WM_MOVE, WM_WINDOWPOSCHANGED):
+            sync_bounds(hwnd)
+        elif msg == WM_EXITSIZEMOVE:
+            # Resize/move finished: re-assert once more so the final geometry
+            # is exact even if intermediate WM_SIZE messages were coalesced.
+            user32.SetTimer(hwnd, 1, 50, None)  # one-shot via WM_TIMER
+        elif msg == WM_TIMER:
+            user32.KillTimer(hwnd, 1)
+            sync_bounds(hwnd)
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     wnd_proc_c = WNDPROC(wnd_proc)
@@ -175,13 +230,6 @@ def open_webview2_window(url: str, title: str, width: int, height: int,
                 continue
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
-            if msg.message == WM_SIZE and state.get("ctrl") is not None:
-                r = wt.RECT()
-                user32.GetClientRect(msg.hwnd, ctypes.byref(r))
-                try:
-                    state["ctrl"].Bounds = r
-                except Exception:
-                    pass
 
     hinstance = kernel32.GetModuleHandleW(None)
     wc = WNDCLASSEXW()

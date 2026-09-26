@@ -175,6 +175,37 @@ def _focus_existing(url: str) -> None:
         webbrowser.open(url)
 
 
+def _watch_browser_session(url: str, server, grace_s: float = 20.0,
+                           poll_s: float = 2.0, opened: bool = True,
+                           never_seen_timeout_s: float = 60.0) -> None:
+    """Browser-fallback watchdog: stop the server when the last tab closes.
+
+    In this mode there is no window handle to watch, so the web UI reports
+    liveness itself (SSE connection + sendBeacon on pagehide). Without this,
+    closing the tab left a python process in Task Manager forever.
+
+    The grace window covers the gap between opening the browser and the page
+    connecting. If no client ever connects and the browser failed to launch,
+    we stop rather than idle forever in the background.
+    """
+    from meetingnotes.webapp.main import client_idle_seconds
+
+    t0 = time.time()
+    ever_seen = False
+    while not server.should_exit:
+        seen, idle = client_idle_seconds()
+        ever_seen = ever_seen or seen
+        if ever_seen and idle is not None and idle > grace_s:
+            _log(f"browser session ended (idle {idle:.0f}s) — stopping server")
+            server.should_exit = True
+            return
+        if not ever_seen and not opened and time.time() - t0 > never_seen_timeout_s:
+            _log("no browser opened and no client connected — stopping server")
+            server.should_exit = True
+            return
+        time.sleep(poll_s)
+
+
 def run(host: str = HOST, port: int = PORT) -> int:
     url = f"http://{host}:{port}"
     no_window = os.environ.get("MEETING_NOTES_NO_BROWSER", "").strip().lower() in ("1", "true", "yes")
@@ -211,12 +242,23 @@ def run(host: str = HOST, port: int = PORT) -> int:
                 if edge_proc is None:
                     _log("window: system-browser fallback (WebView2 + edge-app unavailable)")
                     webbrowser.open(url)
+                    # No window handle exists in this mode: watch the web UI's
+                    # own liveness signal so closing the tab stops the server
+                    # instead of leaving a python process behind.
+                    threading.Thread(
+                        target=_watch_browser_session, args=(url, server), daemon=True
+                    ).start()
                 else:
                     _log("window: edge app-mode fallback")
                     # The Edge window's process ends when the user closes it;
                     # that's our signal to stop the server (no zombie).
                     _wait_for_edge_and_shutdown(edge_proc, server)
                 server_thread.join()
+                # Same hard-exit rationale as the native path below: graceful
+                # teardown can hang on CUDA/non-daemon threads, and all state
+                # is already persisted.
+                _release_lock()
+                os._exit(0)
             else:
                 # Native window closed by the user -> stop the server, then
                 # exit hard. Graceful interpreter shutdown hangs ~30s on CUDA

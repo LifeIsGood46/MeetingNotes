@@ -3,6 +3,43 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Per-job audio-language selector on staged cards, next to profile, output
+  and model. Blank means "use the saved default".
+- Every job now writes a Markdown document: LLM tasks as before, and `raw`
+  jobs as a timestamped transcript (`<name>.raw.md`) so the output shape is
+  the same regardless of task.
+
+### Fixed
+- **Closing the browser tab left a python process running.** In browser-
+  fallback mode there was no window to watch, so the server lived on after
+  the tab closed. The UI now reports liveness (SSE + a `pagehide` beacon)
+  and the launcher stops the server once the last tab is gone.
+- **Confirm dialogs opened during the walkthrough rendered underneath it**
+  (dimmed and unclickable). The modal layer now sits above every wizard
+  layer.
+- **The walkthrough appeared late.** It is shown as soon as settings load
+  instead of after several sequential round-trips, so it no longer needs a
+  click to show up.
+- **VM rendering: guide appeared late, buttons needed two clicks, white
+  bands on maximize.** Chromium's occlusion/background throttling and GPU
+  compositing behave badly under virtualized graphics. The window host now
+  disables those features, re-asserts the WebView bounds on every geometry
+  change and after a resize ends, and moves keyboard focus into the page on
+  window activation (the first click used to be consumed by activation).
+- **Wizard tips could cover the control they describe.** Placement now tries
+  below, above, right, then left, and picks the first spot that fits on
+  screen without overlapping the spotlight.
+- **Scrolling over the wizard tip did nothing.** Wheel events on the tip are
+  forwarded to the settings pane underneath.
+- **Wizard showed stale instructions.** Steps 4 and 5 adapt their titles and
+  text to the real state (no jobs / staged / running / done / failed), step 5
+  spotlights the whole job card, and replaying from Help no longer repeats
+  "add a recording" when a job already exists.
+- Wizard step titles update live during the polling tick, not just on entry.
+
 ## [0.3.0] - 2026-09
 
 ### Added

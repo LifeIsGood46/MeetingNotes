@@ -218,28 +218,60 @@ def run_pipeline(
             document = polish.generate_document(cleaned, opts.task, llm)
     else:
         _log(progress_cb, "[4/4] LLM stage skipped (task=raw)", 0.90)
+        document = _raw_markdown(result, profile, opts)
 
     result.document = document
 
     # --- Export -------------------------------------------------------------
+    # A Markdown document is always written, so every job has the same file
+    # shape regardless of task (raw included). LLM tasks get their named
+    # variant; raw gets a plain transcript document.
     stem = source.stem
+    suffix = opts.output_name or opts.task or "raw"
     outputs = {
         "transcript_raw": out_dir / f"{stem}.raw.txt",
         "transcript_corrected": out_dir / f"{stem}.txt",
         "segments_json": out_dir / f"{stem}.json",
+        "document": out_dir / f"{stem}.{suffix}.md",
     }
     outputs["transcript_raw"].write_text(transcript_raw, encoding="utf-8")
     outputs["transcript_corrected"].write_text(transcript_corrected, encoding="utf-8")
     outputs["segments_json"].write_text(
         json.dumps(corrected_segments, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    if document:
-        suffix = opts.output_name or opts.task
-        doc_path = out_dir / f"{stem}.{suffix}.md"
-        doc_path.write_text(document, encoding="utf-8")
-        outputs["document"] = doc_path
+    outputs["document"].write_text(document, encoding="utf-8")
 
     result.outputs = outputs
     result.elapsed_s = time.time() - t0
     _log(progress_cb, f"Done in {result.elapsed_s:.0f}s.", 1.0)
     return result
+
+
+def _raw_markdown(result: PipelineResult, profile: Profile, opts: PipelineOptions) -> str:
+    """Readable Markdown for a raw transcript (no LLM involved).
+
+    Timestamps are included when segments have them, so the .md is more than
+    a copy of the .txt. Header carries the facts a reader needs to trust it.
+    """
+    lines = [
+        f"# {result.source.stem}",
+        "",
+        f"- Profile: {profile.name} ({profile.description})",
+        f"- Language: {opts.language or profile.language}",
+        f"- Source: `{result.source.name}`",
+        "",
+        "## Transcript",
+        "",
+    ]
+    for seg in result.segments:
+        start = _fmt_timestamp(seg.get("start", 0.0))
+        lines.append(f"**[{start}]** {seg.get('text', '').strip()}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _fmt_timestamp(seconds: float) -> str:
+    seconds = max(0.0, float(seconds or 0.0))
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"

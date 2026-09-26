@@ -50,9 +50,28 @@ def test_pipeline_raw_end_to_end(tmp_path: Path):
     assert "utilikt" in result.transcript_raw
 
     # Files written
-    for key in ("transcript_raw", "transcript_corrected", "segments_json"):
+    for key in ("transcript_raw", "transcript_corrected", "segments_json", "document"):
         assert key in result.outputs
         assert result.outputs[key].exists()
+    # Every job ships a Markdown document, even a raw one.
+    assert result.outputs["document"].name.endswith(".raw.md")
+    md = result.outputs["document"].read_text(encoding="utf-8")
+    assert "# meeting" in md and "Utilitect" in md
+
+
+def test_pipeline_raw_markdown_has_timestamps(tmp_path: Path):
+    src = tmp_path / "clip.mp4"
+    src.write_bytes(b"x")
+    with mock.patch("meetingnotes.pipeline.extract_audio") as m_extract, \
+         mock.patch("meetingnotes.pipeline.chunk_audio", return_value=[tmp_path / "c.wav"]), \
+         mock.patch("meetingnotes.pipeline.transcribe", side_effect=_fake_transcribe):
+        m_extract.return_value = mock.Mock(wav_path=tmp_path / "c.wav", duration_s=1.0)
+        result = run_pipeline(src, tmp_path / "work", tmp_path / "out",
+                              PipelineOptions(profile="generic", task="raw"))
+    md = result.outputs["document"].read_text(encoding="utf-8")
+    assert "[0:00]" in md, "raw markdown should carry timestamps"
+
+
 def test_pipeline_raw_skips_llm(tmp_path: Path):
     src = tmp_path / "m.mp4"
     src.write_bytes(b"x")

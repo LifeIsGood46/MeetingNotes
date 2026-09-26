@@ -74,8 +74,9 @@ Each job writes its files into its own folder under `results/`:
 - `<name>.raw.txt`: the transcript as Whisper produced it
 - `<name>.txt`: the transcript after glossary correction
 - `<name>.json`: segments with timestamps (start, end, text)
-- `<name>.<task>.md`: the LLM document (`notes`, `actions`, `testplan`, …),
-  written when you chose a formatted output
+- `<name>.<task>.md`: a Markdown document, always written. For `raw` jobs it's
+  a timestamped transcript (`.raw.md`); for formatted output it's the LLM
+  document (`notes`, `actions`, `testplan`, …).
 
 ## Command line
 

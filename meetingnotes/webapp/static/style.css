@@ -340,7 +340,11 @@ body.wizard-settings #settings-overlay { z-index: 75; }
 
 /* in-page modal (replaces native dialogs, which leak the origin in app windows) */
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 50;
+  position: fixed; inset: 0;
+  /* Above every layer the wizard can put up (shades 70, outline 80, tip 81):
+     a confirm dialog opened mid-walkthrough must never render underneath
+     the coach-mark overlay, dimmed and unclickable. */
+  z-index: 100;
   /* No backdrop-filter: on VMs with software rendering it stalls compositing
      and the dialog appears only after a stray repaint (clicks "do nothing"
      until you click elsewhere). A plain tint is cheap and identical enough. */

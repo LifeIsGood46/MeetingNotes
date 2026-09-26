@@ -41,6 +41,27 @@ _sse_lock = threading.Lock()
 _sse_loop: asyncio.AbstractEventLoop | None = None
 _llm_models_cache: dict = {}  # 60s TTL cache for model listing
 
+# Client-liveness tracking for the launcher's browser-fallback watchdog:
+# with no app window to watch, "did the user close the tab?" is answered by
+# the UI event stream (and a pagehide beacon).
+_client_seen = False
+_client_last_gone: float | None = None
+
+
+def client_idle_seconds() -> tuple[bool, float | None]:
+    """(seen_any_client, seconds_since_all_clients_left).
+
+    idle is None while a client is connected or while no disconnect has been
+    recorded yet. Used by the launcher to stop the server when the browser
+    session ends (closing the tab must not leave the process behind).
+    """
+    with _sse_lock:
+        if _sse_subscribers:
+            return True, None
+        if _client_last_gone is None:
+            return _client_seen, None
+        return True, time.time() - _client_last_gone
+
 
 # --------------------------------------------------------------------------
 # helpers
@@ -610,6 +631,13 @@ def create_app() -> FastAPI:
             if model and model not in KNOWN_MODELS:
                 raise HTTPException(400, "unknown model size")
             job.model_size = model
+        if "language" in payload:
+            from meetingnotes.transcribe import LANGUAGE_NAMES
+
+            lang = str(payload["language"] or "")
+            if lang and lang not in LANGUAGE_NAMES:
+                raise HTTPException(400, "unknown language code")
+            job.language = lang
         job_queue.persist()
         return {"ok": True}
 
@@ -668,17 +696,34 @@ def create_app() -> FastAPI:
         threading.Thread(target=lambda: (time.sleep(0.3), _kill()), daemon=True).start()
         return {"ok": True}
 
+    @app.post("/api/client-bye")
+    def client_bye():
+        """Beacon sent via navigator.sendBeacon on pagehide/close.
+
+        The browser fallback mode has no window to watch, so this (plus the
+        SSE disconnect below) is how the launcher learns the tab is gone.
+        """
+        global _client_last_gone
+        with _sse_lock:
+            if not _sse_subscribers:
+                _client_last_gone = time.time()
+        return {"ok": True}
+
     @app.get("/api/events")
     async def events():
         """Live update stream (SSE). Async is essential: idle streams park on
         the event loop; a sync generator would eat one thread-pool worker per
         open tab until the pool starves and the whole app hangs."""
+        global _client_seen, _client_last_gone
         q: asyncio.Queue = asyncio.Queue(maxsize=500)
         _bind_sse_loop(asyncio.get_running_loop())
         with _sse_lock:
+            _client_seen = True
+            _client_last_gone = None  # a client is here again (reload, new tab)
             _sse_subscribers.append(q)
 
         async def stream():
+            global _client_last_gone
             try:
                 while True:
                     event, data = await q.get()
@@ -689,6 +734,8 @@ def create_app() -> FastAPI:
                 with _sse_lock:
                     if q in _sse_subscribers:
                         _sse_subscribers.remove(q)
+                    if not _sse_subscribers:
+                        _client_last_gone = time.time()  # all tabs closed
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 

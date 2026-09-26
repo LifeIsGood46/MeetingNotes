@@ -72,9 +72,18 @@
       modelCard: $("#card-model"),
       outputCard: $("#card-output"),
       llmCard: $("#card-llm"),
+      // Specific controls (not whole cards): keeps the spotlight small enough
+      // that the tip can sit beside it instead of covering the control.
+      modelControls: () => [$("#model-size"), $("#download-model-btn")],
+      outputControls: () => [$("#language"), $("#default-profile")],
+      llmControls: () => [$("#llm-provider"), $("#llm-model")],
       dropzone: $("#dropzone"),
       sampleBtn: $("#hello-sample-btn"),
       startBtn: () => document.querySelector(".job[data-status='staged'] .start-btn"),
+      stagedCard: () => {
+        const b = document.querySelector(".job[data-status='staged'] .start-btn");
+        return b ? b.closest(".job") : null;
+      },
       activeJob: () => document.querySelector(".job[data-status='running'], .job[data-status='queued']"),
       openFolderBtn: () => document.querySelector(".job .open-folder-btn"),
     };
@@ -90,9 +99,10 @@
   function buildWizardSteps() {
     const T = wizardTargets();
     const inSettings = () => !$("#settings-overlay").hidden;
-    // Point at the right Settings card when it's open, otherwise at the
-    // Settings rail icon (clicking it opens the modal, the poll retargets).
-    const settingsCard = (el) => () => (inSettings() ? el : T.settingsBtn);
+    // Point at the right Settings controls when the modal is open, otherwise
+    // at the Settings rail icon (clicking it opens the modal, the poll
+    // retargets). Narrow control sets keep the tip clear of the controls.
+    const settingsParts = (parts) => () => (inSettings() ? parts() : [T.settingsBtn]);
     return [
       {
         title: "Welcome to MeetingNotes",
@@ -105,7 +115,7 @@
         title: "Step 1 — get a model",
         text: "I opened Settings for you. Pick a model size (tiny is only 75 MB and fine for trying) and press Download. The choice is saved as your default. If you'd rather fetch it later, just press Next — the first job will download it with a progress bar.",
         optional: true, // don't trap users who want to skip the 3 GB models
-        target: settingsCard(T.modelCard),
+        targets: settingsParts(T.modelControls),
         action: () => {
           openSettings();
         },
@@ -119,7 +129,7 @@
         title: "Step 2 — language & profile",
         text: "Tell the app what your recordings sound like: the audio language, and a profile that seeds domain vocabulary for new jobs (generic is fine to start). These are just defaults — every job can override them.",
         optional: true,
-        target: settingsCard(T.outputCard),
+        targets: settingsParts(T.outputControls),
         action: () => {
           openSettings();
         },
@@ -132,7 +142,7 @@
         title: "Step 3 — formatted output (optional)",
         text: "A raw transcript needs no account. If you also want notes, action items or summaries, connect a provider here: Ollama can run locally and is free; cloud providers need an API key. Not sure? Skip — you can set this up any time in Settings.",
         optional: true,
-        target: settingsCard(T.llmCard),
+        targets: settingsParts(T.llmControls),
         action: () => {
           openSettings();
         },
@@ -140,10 +150,32 @@
         done: () => true,
       },
       {
-        title: "Step 4 — add a recording",
-        text: "Drop any audio or video file into the upload box — or click \u201cTry with a sample\u201d if you have nothing handy. A card appears when the file is ready.",
+        title: () => (document.querySelectorAll(".job").length ? "Step 4 — recording added" : "Step 4 — add a recording"),
+        // When a job already exists (replaying from Help, or the user moved
+        // ahead), don't repeat the "add one" instructions or point at empty
+        // space — describe what's next instead.
+        text: () => {
+          if (document.querySelectorAll(".job").length) {
+            const running = document.querySelector(".job[data-status='running'], .job[data-status='queued']");
+            if (running) {
+              return "There's already a job on the list and it's running. Press Next to watch it finish.";
+            }
+            if (document.querySelector(".job[data-status='done']")) {
+              return "There's already a finished job on the list. Press Next to see where its files went.";
+            }
+            return "There's already a job on the list. Press Next to start it.";
+          }
+          return "Drop any audio or video file into the upload box — or click \u201cTry with a sample\u201d if you have nothing handy. A card appears when the file is ready.";
+        },
         // Both the dropzone and the sample button stay clickable in the hole.
-        targets: () => [T.dropzone, T.sampleBtn],
+        // With jobs already on the list the hello pane (and its sample button)
+        // is hidden — point at the job list instead.
+        targets: () => {
+          if (document.querySelectorAll(".job").length) {
+            return [$("#jobs-pane")];
+          }
+          return [T.dropzone, T.sampleBtn];
+        },
         action: () => {
           finishOnboardSilently();
           if (!$("#settings-overlay").hidden) closeSettings();
@@ -151,19 +183,39 @@
         done: () => document.querySelectorAll(".job").length > 0,
       },
       {
-        title: "Step 5 — press Start",
-        // Adapt to reality: the job may already be running by the time the
-        // user gets here (or may have finished) — never point at a control
+        title: () => {
+          const running = document.querySelector(".job[data-status='running'], .job[data-status='queued']");
+          const done = document.querySelector(".job[data-status='done']");
+          if (running) return "Step 5 — the job is running";
+          if (done) return "Step 5 — done";
+          return "Step 5 — press Start";
+        },
+        // Adapt to reality: the job may already be running or finished by the
+        // time the user gets here — never point at (or describe) a control
         // that isn't on screen.
         text: () => {
           const running = document.querySelector(".job[data-status='running'], .job[data-status='queued']");
           if (running) {
             return "The job is running — you can watch the progress bar, or press Stop on the card to abort. The finished transcript lands in its own folder.";
           }
-          return "Each file becomes a card. Press Start on it and watch the progress bar — you can stop a run at any time. The finished transcript lands in its own folder.";
+          const done = document.querySelector(".job[data-status='done']");
+          if (done) {
+            return "The run finished. Every job writes a transcript, a raw text file, timestamped segments and a Markdown document — \u201cOpen folder\u201d takes you to all of them.";
+          }
+          const failed = document.querySelector(".job[data-status='failed'], .job[data-status='cancelled']");
+          if (failed) {
+            return "That run didn't finish. Press Retry on the card to start it again (your settings are kept), or add another recording.";
+          }
+          return "Each file becomes a card. Before you start it, the card lets you pick the profile, the audio language, the output type and the model just for that file. Then press Start and watch the progress bar.";
         },
-        targets: () => [T.startBtn() || T.activeJob() || T.openFolderBtn()
-                        || document.querySelector(".job")],
+        targets: () => {
+          if (T.startBtn()) {
+            // Point at the whole staged card so profile/language/output/model
+            // controls are all reachable while the wizard explains them.
+            return [T.startBtn().closest(".job") || T.startBtn()];
+          }
+          return [T.activeJob() || T.openFolderBtn() || document.querySelector(".job")];
+        },
         done: () => {
           const badge = document.querySelector(".job .badge-done, .job .badge-running");
           // Nothing staged to start (done/failed/cancelled/empty) — don't trap.
@@ -227,6 +279,7 @@
       if (!wizard.active) return;
       els.next.disabled = !s.done() && !s.optional;
       if (typeof s.text === "function") els.text.textContent = s.text();
+      if (typeof s.title === "function") els.title.textContent = s.title();
       // keep the highlight glued to moving targets (cards re-render)
       wizardPlace(s);
     }, 700);
@@ -280,13 +333,30 @@
       els.outline.style.left = `${x1}px`; els.outline.style.top = `${y1}px`;
       els.outline.style.width = `${x2 - x1}px`; els.outline.style.height = `${y2 - y1}px`;
       els.outline.hidden = false;
-      // tip below the target; flip above when it doesn't fit
+
+      // Tip placement: pick the first candidate that fits on screen AND does
+      // not overlap the highlighted control (below -> above -> right -> left).
+      // The old code only tried below/above and could land on the control.
       const tipW = tip.offsetWidth || 380;
       const tipH = tip.offsetHeight || 160;
-      const tx = Math.min(Math.max(12, x1), W - tipW - 12);
-      let ty = y2 + 14;
-      if (ty + tipH > H - 12) ty = Math.max(12, y1 - tipH - 14);
-      tip.style.left = `${tx}px`; tip.style.top = `${ty}px`;
+      const gap = 14, margin = 12;
+      const fits = (l, t) =>
+        l >= margin && t >= margin && l + tipW <= W - margin && t + tipH <= H - margin;
+      const overlaps = (l, t) =>
+        l < x2 + 4 && l + tipW > x1 - 4 && t < y2 + 4 && t + tipH > y1 - 4;
+      const clampX = (l) => Math.min(Math.max(margin, l), Math.max(margin, W - tipW - margin));
+      const clampY = (t) => Math.min(Math.max(margin, t), Math.max(margin, H - tipH - margin));
+
+      const candidates = [
+        [clampX(x1), y2 + gap],                 // below
+        [clampX(x1), y1 - tipH - gap],          // above
+        [x2 + gap, clampY(y1)],                 // right
+        [x1 - tipW - gap, clampY(y1)],          // left
+      ];
+      let placed = candidates.find(([l, t]) => fits(l, t) && !overlaps(l, t));
+      if (!placed) placed = candidates.find(([l, t]) => fits(l, t));  // overlap okay, still on screen
+      if (!placed) placed = [clampX(x1), clampY(y2 + gap)];           // last resort: clamped below
+      tip.style.left = `${placed[0]}px`; tip.style.top = `${placed[1]}px`;
       tip.style.right = "auto"; tip.style.bottom = "auto";
     } else {
       // No visible target: full shade. Dock the tip bottom-center so it
@@ -311,6 +381,24 @@
   window.addEventListener("scroll", () => {
     if (wizard.active) wizardPlace(wizard.steps[wizard.idx]);
   }, true);
+
+  // The tip floats over the app, so a wheel gesture on it would normally be
+  // swallowed. Forward the delta to the scrollable container underneath
+  // (the settings modal, else the page) so users can scroll without moving
+  // the mouse off the guide box.
+  document.addEventListener("wheel", (e) => {
+    if (!wizard.active) return;
+    if (!e.target.closest || !e.target.closest("#wizard-tip")) return;
+    const scroller = !$("#settings-overlay").hidden
+      ? document.querySelector("#settings-overlay .modal-large") : null;
+    if (scroller) {
+      scroller.scrollTop += e.deltaY;
+      e.preventDefault();
+    } else if (document.documentElement.style.overflow !== "hidden") {
+      window.scrollBy({ top: e.deltaY });
+      e.preventDefault();
+    }
+  }, { passive: false });
 
   async function wizardNext() {
     const step = wizard.steps[wizard.idx];
@@ -363,6 +451,7 @@
   let taskDescriptions = {};
   let profileList = [];   // [{name, description, model}]
   let taskList = [];      // ["raw", "clean", ...]
+  let languageList = [];  // [{code, name}] sorted by display name
 
   async function loadProfiles() {
     const r = await fetch("/api/profiles").then((r) => r.json());
@@ -389,6 +478,13 @@
       types.innerHTML = taskList.map((t) =>
         `<div class="help-type"><code>${escapeHtml(t)}</code> ${escapeHtml(taskDescriptions[t] || "")}</div>`
       ).join("");
+    }
+    // Language choices for per-job selects (same source as Settings).
+    try {
+      const langs = await fetch("/api/languages").then((r) => r.json());
+      languageList = [...(langs.languages || [])].sort((a, b) => a.name.localeCompare(b.name));
+    } catch (_) {
+      languageList = [];
     }
   }
 
@@ -435,8 +531,8 @@
 
   // ---------------- settings ----------------
   let settingsCache = {}; // last loaded settings (job cards show effective defaults)
-  async function loadSettings() {
-    const s = await fetch("/api/settings").then((r) => r.json());
+  async function loadSettings(prefetched) {
+    const s = prefetched || await fetch("/api/settings").then((r) => r.json());
     settingsCache = s;
     $("#model-size").value = s.model_size;
     $("#model-device").value = s.device === "cuda" ? "cuda" : "cpu";
@@ -759,6 +855,14 @@
           (m) => `<option value="${m}" ${m === modelDefault ? "selected" : ""}>${m}</option>`))
         .join("");
       const showPrompt = j.task !== "raw";
+      // Language: per-job override. Blank value = use the saved default.
+      const effectiveLang = settingsCache.language || "ru";
+      const langDefaultLabel = languageList.find((l) => l.code === effectiveLang);
+      const langOptions = [
+        `<option value="" ${j.language ? "" : "selected"}>default (${escapeHtml(langDefaultLabel ? langDefaultLabel.name : effectiveLang)})</option>`,
+      ].concat(languageList.map(
+        (l) => `<option value="${l.code}" ${l.code === j.language ? "selected" : ""}>${escapeHtml(l.name)} (${l.code})</option>`
+      )).join("");
       el.innerHTML = `
         <div class="job-head">
           <strong class="job-name">${escapeHtml(j.filename)}</strong>
@@ -768,6 +872,10 @@
           <label class="ctl">
             <span class="muted">Profile</span>
             <select class="job-profile">${profileOptions}</select>
+          </label>
+          <label class="ctl">
+            <span class="muted">Audio language <span class="muted small">(this job only)</span></span>
+            <select class="job-language">${langOptions}</select>
           </label>
           <label class="ctl">
             <span class="muted">Output</span>
@@ -802,6 +910,19 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model_size: e.target.value }),
         });
+      });
+      el.querySelector(".job-language").addEventListener("change", async (e) => {
+        const r = await fetch(`/api/jobs/${j.id}/update`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language: e.target.value }),
+        });
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          let msg = "unknown";
+          try { msg = JSON.parse(text).detail || text || msg; } catch (_) { msg = text || msg; }
+          await modalAlert("Could not set language", `HTTP ${r.status}: ${msg}`);
+          refreshJobs();
+        }
       });
       el.querySelector(".job-task").addEventListener("change", async (e) => {
         const task = e.target.value;
@@ -1039,12 +1160,18 @@
       setTimeout(subscribeEvents, wait);
     };
   }
-  // Release the socket on tab close / navigation (bfcache included).
+  // Release the socket on tab close / navigation (bfcache included) and tell
+  // the server the tab is gone. In browser-fallback mode the launcher stops
+  // the server on this signal; without it, closing the tab left the python
+  // process in Task Manager forever.
   window.addEventListener("pagehide", () => {
     if (eventStream) {
       try { eventStream.close(); } catch (_) { /* already dead */ }
       eventStream = null;
     }
+    try {
+      navigator.sendBeacon("/api/client-bye");
+    } catch (_) { /* older engines: SSE disconnect is the fallback signal */ }
   });
 
   // ---------------- LLM model list (Ollama) ----------------
@@ -1196,22 +1323,37 @@
   });
 
   (async () => {
-    try {
-      const v = await fetch("/api/version").then((r) => r.json());
-      $("#app-version").textContent = `v${v.version} · started ${v.started_at}`;
-    } catch (_) {}
-    const models = await fetch("/api/models").then((r) => r.json());
-    const sel = $("#model-size");
-    sel.innerHTML = "";
-    models.models.forEach((m) => sel.insertAdjacentHTML("beforeend", `<option value="${m.size}">${m.size}</option>`));
+    // Kick off every independent fetch in parallel, then wire up UI as each
+    // resolves. The old sequential chain delayed the first paint of the
+    // walkthrough by ~6 round-trips, so it appeared late ("had to click
+    // before it showed up").
+    const versionP = fetch("/api/version").then((r) => r.json()).catch(() => null);
+    const settingsP = fetch("/api/settings").then((r) => r.json()).catch(() => null);
+    const modelsP = fetch("/api/models").then((r) => r.json()).catch(() => null);
+
+    // Version + model list are cosmetic; fill them whenever they land.
+    versionP.then((v) => {
+      if (v) $("#app-version").textContent = `v${v.version} · started ${v.started_at}`;
+    });
+    const settings = await settingsP;
+
+    // First launch ever: show the walkthrough as soon as settings are known.
+    // It must not wait for profiles/languages/jobs to finish loading.
+    if (settings && !settings.wizard_done) openWizard();
+
+    const models = await modelsP;
+    if (models) {
+      const sel = $("#model-size");
+      sel.innerHTML = "";
+      models.models.forEach((m) =>
+        sel.insertAdjacentHTML("beforeend", `<option value="${m.size}">${m.size}</option>`));
+    }
     await loadProfiles();
-    const settings = await loadSettings();
+    await loadSettings(settings);
     // Fire-and-forget: the LLM model list must NEVER block the queue UI,
     // even if the cloud endpoint is slow or rate-limiting us.
     refreshLlmModels();
     await refreshJobs();
     subscribeEvents();
-    // First launch ever: interactive setup walkthrough. Reopenable from Help.
-    if (settings && !settings.wizard_done) openWizard();
   })();
 })();
