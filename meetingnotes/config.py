@@ -109,6 +109,13 @@ if getattr(sys, "frozen", False):
     os.environ.setdefault("HF_HOME", str(MODELS_DIR / "hf"))
     os.environ.setdefault("HF_HUB_CACHE", str(MODELS_DIR / "hf" / "hub"))
 
+    # The CUDA runtime JIT-compiles cuBLAS kernels on first use and caches
+    # them in %APPDATA%\NVIDIA\ComputeCache (~200 MB). Point it beside the exe
+    # so deleting the app folder really removes everything. Set before any
+    # CUDA library loads.
+    os.environ.setdefault("CUDA_CACHE_PATH", str(APP_DIR / "cuda-cache"))
+    os.environ.setdefault("CUDA_CACHE_MAXSIZE", str(512 * 1024 * 1024))
+
     _migrate_legacy_home()
 else:
     # ---- dev mode: keep project-local dirs (gitignored) ----

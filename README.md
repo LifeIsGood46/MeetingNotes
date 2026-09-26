@@ -21,7 +21,9 @@ No recording handy? "Try with a sample" stages a short built-in clip, so you
 can take the whole thing for a spin first.
 
 No installer, no admin rights, no account. The app keeps everything it needs in
-its own folder, so deleting the folder removes it completely.
+its own folder, so deleting the folder removes it completely. Nothing is
+written to Documents, Downloads or your user profile — not even the GPU's
+kernel cache, which is redirected into the app folder.
 
 The transcription model isn't included in the zip. It's too large to ship
 (75 MB to 3 GB depending on the model). You download it once from inside the

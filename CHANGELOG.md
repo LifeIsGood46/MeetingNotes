@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same regardless of task.
 
 ### Fixed
+- **Fully self-contained: nothing written outside the app folder.** The CUDA
+  runtime was caching ~200 MB of JIT-compiled kernels in
+  `%APPDATA%\NVIDIA\ComputeCache`; that is now redirected into
+  `data/cuda-cache/` beside the exe, so deleting the app folder really
+  removes everything. Verified with an isolated run (fake user profile,
+  APPDATA and LOCALAPPDATA): a real transcription leaves the user dirs
+  untouched.
 - **CPU fallback was invisible and misreported.** A run that fell back to CPU
   still printed `[cuda/...]`, and the raw DLL error flashed in the progress
   bar. The real device is now reported, a no-GPU pre-check switches to CPU
